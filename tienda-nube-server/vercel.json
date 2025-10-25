@@ -3,6 +3,9 @@
   "functions": {
     "api/try-on.js": {
       "runtime": "nodejs18.x"
+    },
+    "api/test.js": {
+      "runtime": "nodejs18.x"
     }
   },
   "routes": [

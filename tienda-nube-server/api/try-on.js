@@ -37,10 +37,9 @@ export default async function handler(req, res) {
     try {
         console.log('🤖 Procesando AI Try-On...');
         
-        const { productImage, size } = req.body;
-        const userImageBuffer = req.body.userImage;
+        const { productImage, size, userImage } = req.body;
         
-        if (!userImageBuffer) {
+        if (!userImage) {
             return res.status(400).json({ 
                 success: false, 
                 error: 'No se recibió imagen del usuario' 
@@ -54,7 +53,7 @@ export default async function handler(req, res) {
         // Procesar imagen del usuario
         let processedUserImage;
         try {
-            processedUserImage = await sharp(Buffer.from(userImageBuffer, 'base64'))
+            processedUserImage = await sharp(Buffer.from(userImage, 'base64'))
                 .resize(512, 512, { fit: 'cover' })
                 .jpeg({ quality: 90 })
                 .toBuffer();
@@ -123,7 +122,7 @@ DESCRIBE WHAT YOU SEE: Describe la imagen generada y cómo se ve la prenda en el
         res.json({
             success: true,
             description: '¡Genial! Hemos procesado tu foto con IA.',
-            originalImage: `data:image/jpeg;base64,${userImageBuffer}`,
+            originalImage: `data:image/jpeg;base64,${userImage}`,
             generatedImage: `data:image/jpeg;base64,${imageData.data}`,
             finalImage: `data:image/jpeg;base64,${imageData.data}`,
             size: size,

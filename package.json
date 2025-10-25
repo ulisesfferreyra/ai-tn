@@ -1,0 +1,27 @@
+{
+  "name": "ai-tryon-tienda-nube",
+  "version": "1.0.0",
+  "description": "AI Try-On Server for Tienda Nube",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^14.2.33",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@google/generative-ai": "^0.21.0",
+    "sharp": "^0.33.5",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.33"
+  },
+  "keywords": ["ai", "try-on", "tienda-nube", "fashion"],
+  "author": "AI Try-On Team",
+  "license": "MIT"
+}

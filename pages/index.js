@@ -8,7 +8,7 @@ export default function Home() {
       <ul>
         <li><a href="/api/test">/api/test</a> - Endpoint de prueba</li>
         <li><a href="/api/try-on">/api/try-on</a> - Endpoint principal (POST)</li>
-        <li><a href="/test-form.html">/test-form.html</a> - Formulario de prueba</li>
+        <li><a href="/test-form">/test-form</a> - Formulario de prueba</li>
       </ul>
       
       <h2>🚀 Estado:</h2>

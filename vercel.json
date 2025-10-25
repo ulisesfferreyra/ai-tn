@@ -1,10 +1,3 @@
 {
-  "functions": {
-    "pages/api/try-on.js": {
-      "runtime": "nodejs18.x"
-    },
-    "pages/api/test.js": {
-      "runtime": "nodejs18.x"
-    }
-  }
+  "framework": "nextjs"
 }

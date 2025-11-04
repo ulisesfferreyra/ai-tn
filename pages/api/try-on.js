@@ -86,39 +86,30 @@ export default async function handler(req, res) {
         // Preparar datos para la IA
         const parts = [
             {
-                text: `Eres un experto en moda y fotografía. Tu tarea es crear una imagen realista donde el usuario esté usando la prenda de ropa mostrada.
-
+                text: `
+Eres un experto en moda y fotografía.
+Tu tarea es crear una imagen realista donde el usuario esté usando la prenda de ropa mostrada.
 ANÁLISIS DE IMÁGENES DE REFERENCIA:
  1.⁠ ⁠Vas a recibir 1 o más fotos de la prenda
  2.⁠ ⁠SI HAY SOLO 1 FOTO: úsala como referencia única
- 3.⁠ ⁠SI HAY MÚLTIPLES FOTOS (2+): 
-   - ANALIZA TODAS antes de generar
-   - IDENTIFICA cuál muestra FRENTE y cuál REVERSO
-   - COMPARA para entender:
-     * Diseño frontal vs trasero
-     * Estampados o gráficos en cada lado
-     * Detalles específicos de cada vista
-   - USA la vista correcta según orientación del usuario
-
+ 3.⁠ ⁠SI HAY MÚLTIPLES FOTOS (2+):
+ANALIZA TODAS antes de generar
+IDENTIFICA cuál muestra FRENTE y cuál REVERSO
+COMPARA para entender:
+Diseño frontal vs trasero
+Estampados o gráficos en cada lado
+Detalles específicos de cada vista
+USA la vista correcta según orientación del usuario
 ORIENTACIÓN CORRECTA:
  4.⁠ ⁠Usuario de frente → usa diseño FRONTAL de la prenda
  5.⁠ ⁠Usuario de espaldas → usa diseño TRASERO de la prenda
  6.⁠ ⁠Verifica que el diseño coincida con la orientación del cuerpo
-
 AJUSTE Y REALISMO:
  7.⁠ ⁠Talle seleccionado: ${size}
  8.⁠ ⁠Ajusta el tamaño según talle
  9.⁠ ⁠La prenda debe verse natural y bien ajustada
 10.⁠ ⁠Mantén pose y expresión del usuario
-11.⁠ ⁠Resultado final: profesional y realista
-
-VALIDACIÓN FINAL:
-•⁠  ⁠¿Usaste la vista correcta de la prenda?
-•⁠  ⁠¿El diseño frontal está en el frente del cuerpo?
-•⁠  ⁠¿El diseño trasero está en la espalda?
-•⁠  ⁠¿Coincide con las fotos de referencia?
-
-DESCRIBE: Explica cuántas fotos recibiste, qué vista usaste (frontal/trasera) y cómo se ve la prenda en el usuario.`
+11.⁠ ⁠Resultado final: profesional y realista`
             },
             {
                 inlineData: {

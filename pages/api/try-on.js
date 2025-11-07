@@ -1,22 +1,5 @@
-onst multer = require('multer');
 const sharp = require('sharp');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-// Configurar multer para memoria
-const upload = multer({ 
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB límite
-        fieldSize: 10 * 1024 * 1024, // 10MB límite para campos
-    },
-    fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('image/')) {
-            cb(null, true);
-        } else {
-            cb(new Error('Solo se permiten imágenes'), false);
-        }
-    }
-});
 
 // Configurar Google AI
 const API_KEY = process.env.GOOGLE_AI_API_KEY || 'AIzaSyDhNf9uWTqqbikQiT4gGAzQ_hCyDz9xC8A';

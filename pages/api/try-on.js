@@ -1,4 +1,4 @@
-const multer = require('multer');
+onst multer = require('multer');
 const sharp = require('sharp');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
@@ -67,6 +67,9 @@ export default async function handler(req, res) {
                 });
             }
         }
+        if (req.body.userOrientation) {
+            console.log('👤 User orientation presente:', req.body.userOrientation);
+        }
     }
     
     // Configurar CORS
@@ -88,7 +91,7 @@ export default async function handler(req, res) {
     try {
         console.log('🤖 Procesando AI Try-On...');
         
-        const { productImage, productImages, size, userImage } = req.body;
+        const { productImage, productImages, size, userImage, userOrientation } = req.body;
         
         // Normalizar imágenes del producto: convertir productImage (singular) a array si es necesario
         let productImagesArray = [];
@@ -104,6 +107,7 @@ export default async function handler(req, res) {
         console.log('📝 Total de imágenes del producto:', productImagesArray.length);
         console.log('📝 size recibido:', size);
         console.log('📝 userImage recibido:', userImage ? 'Sí' : 'No');
+        console.log('📝 userOrientation recibido:', userOrientation || 'No especificado');
         
         if (!userImage) {
             console.log('❌ No se recibió imagen del usuario');
@@ -116,6 +120,7 @@ export default async function handler(req, res) {
         console.log('📸 Imagen del usuario recibida');
         console.log('👕 Talle seleccionado:', size);
         console.log('🖼️ Imágenes del producto recibidas:', productImagesArray.length);
+        console.log('👤 Orientación del usuario:', userOrientation || 'No especificada');
         
         // Procesar imagen del usuario
         let processedUserImage;
@@ -157,11 +162,50 @@ export default async function handler(req, res) {
 
         const sizeInstruction = sizeInstructions[size] || sizeInstructions['M'];
 
-        // Construir prompt dinámicamente según el número de imágenes del producto
+        // Construir prompt dinámicamente según el número de imágenes del producto y orientación del usuario
         const productImagesCount = productImagesArray.length;
         const productImagesText = productImagesCount === 1 
             ? 'the second image' 
             : `images 2 through ${productImagesCount + 1}`;
+        
+        // Determinar instrucciones de orientación basadas en userOrientation
+        let orientationInstructions = '';
+        if (userOrientation === 'front') {
+            orientationInstructions = `
+        ORIENTATION MATCHING:
+        - The person in the first image is facing FRONT (front-facing photo)
+        - You MUST analyze ALL product images (${productImagesText}) to determine which ones show the FRONT view of the garment
+        - Look for images where:
+          * A person is facing the camera (front-facing)
+          * The front of the garment is visible (front design, logos, patterns, neckline)
+          * The garment is shown from the front perspective
+        - Use ONLY the product images that show the FRONT view of the garment
+        - Ignore product images that show the back or side views
+        - Match the front view of the garment from the product images to the front-facing person in the first image`;
+        } else if (userOrientation === 'back') {
+            orientationInstructions = `
+        ORIENTATION MATCHING:
+        - The person in the first image is facing BACK (back-facing photo)
+        - You MUST analyze ALL product images (${productImagesText}) to determine which ones show the BACK view of the garment
+        - Look for images where:
+          * A person is facing away from the camera (back-facing)
+          * The back of the garment is visible (back design, patterns, text on back)
+          * The garment is shown from the back perspective
+        - Use ONLY the product images that show the BACK view of the garment
+        - Ignore product images that show the front or side views
+        - Match the back view of the garment from the product images to the back-facing person in the first image`;
+        } else {
+            orientationInstructions = `
+        ORIENTATION MATCHING:
+        - Analyze ALL product images (${productImagesText}) to determine which ones show the FRONT view and which show the BACK view
+        - Look at the person's position in each product image:
+          * FRONT view: Person facing camera, front of garment visible
+          * BACK view: Person facing away, back of garment visible
+        - Determine the orientation of the person in the first image (front or back)
+        - Use the product images that match the person's orientation in the first image
+        - If the person in the first image is front-facing, use front-view product images
+        - If the person in the first image is back-facing, use back-view product images`;
+        }
         
         const prompt = `
         You are a virtual try-on AI. Your task is to put the EXACT garment from the product images onto the person in the first image.
@@ -170,19 +214,26 @@ export default async function handler(req, res) {
         1. FIRST IMAGE = Person (keep face, body, pose, background IDENTICAL). Replace ONLY the clothing.
         2. PRODUCT IMAGES (${productImagesText}) = These are the EXACT garment(s) from the store. You MUST analyze ALL product images and replicate the garment EXACTLY as shown.
         
+        ${orientationInstructions}
+        
         IMAGE ANALYSIS:
         - Analyze ALL product images you receive to understand the complete garment
+        - For each product image, determine if it shows:
+          * FRONT view: Person facing camera, front of garment visible
+          * BACK view: Person facing away, back of garment visible
+          * SIDE view: Person in profile, side of garment visible
+        - Use the product images that match the orientation of the person in the first image
         - Look at different angles, details, patterns, and features shown across all product images
-        - Combine information from all product images to get the most accurate representation
-        - If multiple product images show different views (front, back, side), use all of them to understand the full garment
+        - Combine information from all matching product images to get the most accurate representation
+        - If multiple product images show the same view (e.g., multiple front views), use all of them to understand the full garment details
         
         GARMENT REQUIREMENTS:
-        - Look at ALL product images carefully - these show the EXACT garment you must put on the person
+        - Look at ALL matching product images carefully - these show the EXACT garment you must put on the person
         - Analyze the garment type: If the product images show a basic t-shirt (no collar, no buttons), make it a basic t-shirt
         - If the product images show a polo shirt (with collar and buttons), make it a polo shirt
         - If the product images show a hoodie, make it a hoodie
-        - Replicate the EXACT garment from the product images (pattern, color, fabric, design, style, texture, details, neckline, sleeves, buttons, collar, graphics, logos, text, etc.)
-        - Use information from ALL product images to ensure accuracy
+        - Replicate the EXACT garment from the matching product images (pattern, color, fabric, design, style, texture, details, neckline, sleeves, buttons, collar, graphics, logos, text, etc.)
+        - Use information from ALL matching product images to ensure accuracy
         - Size: ${sizeInstruction}
         - Make it look like the person is actually wearing this specific garment from the store
         - Ensure realistic fit, drape, seams, shadows, and lighting
@@ -198,14 +249,15 @@ export default async function handler(req, res) {
         
         IMPORTANT: 
         - Do NOT use the clothing from the first image (person's original clothing)
-        - Use ONLY the garment from the product images (these are the store's products that the user wants to try on)
-        - Analyze ALL product images to understand the complete garment design
+        - Use ONLY the garment from the matching product images (these are the store's products that the user wants to try on)
+        - Analyze ALL product images to determine their orientation (front/back/side)
+        - Use ONLY the product images that match the person's orientation in the first image
         - The product images show the EXACT garment from the store that you must put on the person
         - Adjust the size according to the selected size: ${size}
-        - The garment must be IDENTICAL to the one shown in the product images (the store's product)
+        - The garment must be IDENTICAL to the one shown in the matching product images (the store's product)
         - This is the garment that the user wants to try on from the store
         
-        OUTPUT: Generate a photorealistic final image showing the person wearing the exact garment from the product images in the specified size. No text or descriptions.
+        OUTPUT: Generate a photorealistic final image showing the person wearing the exact garment from the matching product images in the specified size. No text or descriptions.
         `;
 
         const parts = [
@@ -221,6 +273,7 @@ export default async function handler(req, res) {
         // Agregar todas las imágenes del producto si están disponibles
         if (productImagesArray.length > 0) {
             console.log(`🖼️ Agregando ${productImagesArray.length} imagen(es) del producto a la IA`);
+            console.log(`👤 La IA determinará la orientación de cada imagen y usará las que coincidan con la orientación del usuario (${userOrientation || 'desconocida'})`);
             
             productImagesArray.forEach((productImg, idx) => {
                 if (productImg && productImg.startsWith('data:image')) {
@@ -229,6 +282,7 @@ export default async function handler(req, res) {
                     const mimeType = mimeMatch ? mimeMatch[1] : 'png';
                     
                     console.log(`   [${idx + 1}/${productImagesArray.length}] Agregando imagen (${mimeType}, ${(base64Data.length / 1024).toFixed(2)} KB)`);
+                    console.log(`   [${idx + 1}/${productImagesArray.length}] La IA analizará esta imagen para determinar si es frontal o trasera`);
                     
                     parts.push({
                         inline_data: {
@@ -242,12 +296,14 @@ export default async function handler(req, res) {
             });
             
             console.log(`✅ Total de ${productImagesArray.length} imagen(es) del producto agregadas`);
+            console.log(`📋 La IA analizará todas las imágenes para determinar su orientación y usar las correctas`);
         } else {
             console.log('⚠️ No se recibieron imágenes del producto, usando solo imagen del usuario');
         }
         
         console.log('🧠 Enviando a Google AI...');
         console.log('📝 Número de partes enviadas:', parts.length);
+        console.log('📝 Orientación del usuario para matching:', userOrientation || 'No especificada (IA determinará)');
         
         // Generar imagen con IA
         const result = await model.generateContent(parts);
@@ -323,3 +379,5 @@ export default async function handler(req, res) {
         }
     }
 }
+
+

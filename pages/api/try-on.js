@@ -155,39 +155,114 @@ export default async function handler(req, res) {
         let orientationInstructions = '';
         if (userOrientation === 'front') {
             orientationInstructions = `
-        ORIENTATION MATCHING:
+        CRITICAL ORIENTATION ANALYSIS - STEP BY STEP PROCESS:
+        
+        STEP 1: DEEP ANALYSIS OF ALL PRODUCT IMAGES
         - The person in the first image is facing FRONT (front-facing photo)
-        - You MUST analyze ALL product images (${productImagesText}) to determine which ones show the FRONT view of the garment
-        - Look for images where:
-          * A person is facing the camera (front-facing)
-          * The front of the garment is visible (front design, logos, patterns, neckline)
-          * The garment is shown from the front perspective
-        - Use ONLY the product images that show the FRONT view of the garment
-        - Ignore product images that show the back or side views
-        - Match the front view of the garment from the product images to the front-facing person in the first image`;
+        - You MUST perform a COMPREHENSIVE analysis of ALL ${productImagesCount} product images (${productImagesText}) BEFORE making any decisions
+        - For EACH product image, analyze in detail:
+          * PERSON POSITION: Is the person facing the camera (FRONT) or facing away (BACK)?
+          * FACE VISIBILITY: Can you see the person's face? If YES = FRONT view, If NO = likely BACK view
+          * BODY ORIENTATION: Is the person's chest/torso visible? If YES = FRONT view, If NO = likely BACK view
+          * GARMENT FEATURES: 
+            - FRONT indicators: Visible neckline, buttons (if applicable), front logos/designs, front pockets, zipper pull (if visible from front)
+            - BACK indicators: Back of neck/collar, back designs/logos, back text, back pockets, zipper pull (if visible from back)
+          * ARM POSITION: Are the arms visible in front of the body? If YES = likely FRONT view
+        
+        STEP 2: CROSS-VALIDATION
+        - Compare ALL product images with each other to identify patterns
+        - If multiple images show the same person position (all front or all back), they are the same orientation
+        - Look for consistent features across images (same design on front vs different design on back)
+        - Verify your classification by checking if the features make sense (e.g., if you see a front logo in one image, confirm it's not visible in what you classified as "back")
+        
+        STEP 3: FINAL SELECTION
+        - Use ONLY the product images that you have CONFIRMED show the FRONT view of the garment
+        - DOUBLE-CHECK: Before using an image, verify:
+          * The person in that product image is facing the camera (FRONT)
+          * The garment features visible match a FRONT view (neckline, front design, etc.)
+          * It matches the orientation of the person in the first image (FRONT)
+        - IGNORE and DO NOT USE product images that show:
+          * BACK view (person facing away)
+          * SIDE view (person in profile)
+          * Any ambiguous or unclear orientation
+        
+        STEP 4: ERROR PREVENTION
+        - CRITICAL: Before applying the garment, verify one last time that you are using FRONT view images
+        - If you have ANY doubt about an image's orientation, DO NOT use it
+        - It is better to use fewer images that you are CERTAIN are front-facing than to risk using a back-facing image
+        - NEVER apply back-facing garment features to a front-facing person`;
         } else if (userOrientation === 'back') {
             orientationInstructions = `
-        ORIENTATION MATCHING:
+        CRITICAL ORIENTATION ANALYSIS - STEP BY STEP PROCESS:
+        
+        STEP 1: DEEP ANALYSIS OF ALL PRODUCT IMAGES
         - The person in the first image is facing BACK (back-facing photo)
-        - You MUST analyze ALL product images (${productImagesText}) to determine which ones show the BACK view of the garment
-        - Look for images where:
-          * A person is facing away from the camera (back-facing)
-          * The back of the garment is visible (back design, patterns, text on back)
-          * The garment is shown from the back perspective
-        - Use ONLY the product images that show the BACK view of the garment
-        - Ignore product images that show the front or side views
-        - Match the back view of the garment from the product images to the back-facing person in the first image`;
+        - You MUST perform a COMPREHENSIVE analysis of ALL ${productImagesCount} product images (${productImagesText}) BEFORE making any decisions
+        - For EACH product image, analyze in detail:
+          * PERSON POSITION: Is the person facing the camera (FRONT) or facing away (BACK)?
+          * FACE VISIBILITY: Can you see the person's face? If NO = likely BACK view, If YES = FRONT view
+          * BODY ORIENTATION: Is the person's back/spine visible? If YES = BACK view, If NO = likely FRONT view
+          * GARMENT FEATURES: 
+            - BACK indicators: Back of neck/collar, back designs/logos, back text, back pockets, zipper pull (if visible from back)
+            - FRONT indicators: Visible neckline from front, buttons (if applicable), front logos/designs (NOT visible in back view)
+          * ARM POSITION: Are the arms visible behind the body? If YES = likely BACK view
+        
+        STEP 2: CROSS-VALIDATION
+        - Compare ALL product images with each other to identify patterns
+        - If multiple images show the same person position (all front or all back), they are the same orientation
+        - Look for consistent features across images (same design on back vs different design on front)
+        - Verify your classification by checking if the features make sense (e.g., if you see a back logo in one image, confirm it's not visible in what you classified as "front")
+        
+        STEP 3: FINAL SELECTION
+        - Use ONLY the product images that you have CONFIRMED show the BACK view of the garment
+        - DOUBLE-CHECK: Before using an image, verify:
+          * The person in that product image is facing away from the camera (BACK)
+          * The garment features visible match a BACK view (back design, back text, etc.)
+          * It matches the orientation of the person in the first image (BACK)
+        - IGNORE and DO NOT USE product images that show:
+          * FRONT view (person facing camera)
+          * SIDE view (person in profile)
+          * Any ambiguous or unclear orientation
+        
+        STEP 4: ERROR PREVENTION
+        - CRITICAL: Before applying the garment, verify one last time that you are using BACK view images
+        - If you have ANY doubt about an image's orientation, DO NOT use it
+        - It is better to use fewer images that you are CERTAIN are back-facing than to risk using a front-facing image
+        - NEVER apply front-facing garment features to a back-facing person`;
         } else {
             orientationInstructions = `
-        ORIENTATION MATCHING:
-        - Analyze ALL product images (${productImagesText}) to determine which ones show the FRONT view and which show the BACK view
-        - Look at the person's position in each product image:
-          * FRONT view: Person facing camera, front of garment visible
-          * BACK view: Person facing away, back of garment visible
-        - Determine the orientation of the person in the first image (front or back)
-        - Use the product images that match the person's orientation in the first image
-        - If the person in the first image is front-facing, use front-view product images
-        - If the person in the first image is back-facing, use back-view product images`;
+        CRITICAL ORIENTATION ANALYSIS - STEP BY STEP PROCESS:
+        
+        STEP 1: DEEP ANALYSIS OF ALL PRODUCT IMAGES
+        - You MUST perform a COMPREHENSIVE analysis of ALL ${productImagesCount} product images (${productImagesText}) BEFORE making any decisions
+        - For EACH product image, analyze in detail:
+          * PERSON POSITION: Is the person facing the camera (FRONT) or facing away (BACK)?
+          * FACE VISIBILITY: Can you see the person's face? If YES = FRONT view, If NO = likely BACK view
+          * BODY ORIENTATION: 
+            - FRONT: Chest/torso visible, arms in front
+            - BACK: Back/spine visible, arms behind
+          * GARMENT FEATURES: 
+            - FRONT: Visible neckline, buttons, front logos/designs, front pockets
+            - BACK: Back of neck/collar, back designs/logos, back text, back pockets
+        
+        STEP 2: DETERMINE USER ORIENTATION
+        - Analyze the first image (the person) to determine if they are facing FRONT or BACK
+        - Use the same detailed analysis: face visibility, body orientation, etc.
+        
+        STEP 3: CROSS-VALIDATION
+        - Compare ALL product images with each other
+        - Verify consistency: images with same person position should have same orientation
+        - Cross-reference features to confirm classifications
+        
+        STEP 4: MATCHING
+        - Match product images to user orientation (FRONT to FRONT, BACK to BACK)
+        - Use ONLY product images that match the user's orientation
+        - DOUBLE-CHECK each image before using it
+        
+        STEP 5: ERROR PREVENTION
+        - CRITICAL: Verify one last time that orientation matches
+        - If ANY doubt, DO NOT use that image
+        - NEVER apply wrong-side features (front to back or back to front)`;
         }
         
         const prompt = `
@@ -199,16 +274,48 @@ export default async function handler(req, res) {
         
         ${orientationInstructions}
         
-        IMAGE ANALYSIS:
-        - Analyze ALL product images you receive to understand the complete garment
-        - For each product image, determine if it shows:
-          * FRONT view: Person facing camera, front of garment visible
-          * BACK view: Person facing away, back of garment visible
-          * SIDE view: Person in profile, side of garment visible
-        - Use the product images that match the orientation of the person in the first image
-        - Look at different angles, details, patterns, and features shown across all product images
-        - Combine information from all matching product images to get the most accurate representation
-        - If multiple product images show the same view (e.g., multiple front views), use all of them to understand the full garment details
+        DEEP IMAGE ANALYSIS PROTOCOL:
+        
+        PHASE 1: COMPREHENSIVE INDIVIDUAL ANALYSIS
+        - You MUST analyze EACH of the ${productImagesCount} product images INDIVIDUALLY and THOROUGHLY
+        - For EACH product image, perform a DETAILED examination:
+          * PERSON ANALYSIS:
+            - Face visibility: Can you clearly see the person's face? (YES = FRONT, NO = likely BACK)
+            - Body position: Is the chest/torso visible? (YES = FRONT) OR is the back/spine visible? (YES = BACK)
+            - Arm position: Are arms in front of body? (FRONT) OR behind body? (BACK)
+            - Overall pose: Does the person face the camera? (FRONT) OR face away? (BACK)
+          * GARMENT FEATURE ANALYSIS:
+            - Neckline/collar: Visible from front? (FRONT) OR back of neck visible? (BACK)
+            - Design elements: Where are logos/designs located? (Front chest = FRONT, Back = BACK)
+            - Text/graphics: Can you read text normally? (FRONT) OR is it mirrored/on back? (BACK)
+            - Pockets: Front pockets visible? (FRONT) OR back pockets visible? (BACK)
+            - Zippers/buttons: Visible from front? (FRONT) OR from back? (BACK)
+          * ORIENTATION CLASSIFICATION:
+            - Based on ALL the above factors, classify as: FRONT, BACK, or SIDE
+            - Be CONFIDENT in your classification - if uncertain, mark as UNCLEAR
+        
+        PHASE 2: CROSS-REFERENCE VALIDATION
+        - Compare ALL product images with EACH OTHER
+        - Look for CONSISTENCY: Images showing same person position should have same orientation
+        - Identify PATTERNS: If image A shows a front logo and image B shows a different design, they are likely different sides
+        - VERIFY classifications: If you classified image A as FRONT and it shows a logo, check that image B (if classified as BACK) doesn't show the same logo
+        - RESOLVE conflicts: If classifications conflict, re-analyze those specific images more carefully
+        
+        PHASE 3: USER-PRODUCT MATCHING
+        - Determine the orientation of the person in the first image (FRONT or BACK)
+        - Match product images to user orientation:
+          * If user is FRONT-facing → Use ONLY FRONT-facing product images
+          * If user is BACK-facing → Use ONLY BACK-facing product images
+        - DOUBLE-CHECK each match: Verify that the product image orientation matches the user orientation
+        - REJECT any product images that don't match (even if they're high quality)
+        
+        PHASE 4: FINAL VERIFICATION
+        - Before applying the garment, perform a FINAL check:
+          * List all product images you plan to use
+          * For each, confirm: "This image shows [FRONT/BACK] view, and the user is [FRONT/BACK]-facing. MATCH ✓"
+          * If ANY image doesn't match, REMOVE it from your selection
+        - CRITICAL RULE: It is INFINITELY better to use FEWER images that are CORRECTLY oriented than to use MORE images with WRONG orientation
+        - ERROR PREVENTION: If you have even 1% doubt about an image's orientation, DO NOT use it
         
         GARMENT REQUIREMENTS:
         - Look at ALL matching product images carefully - these show the EXACT garment you must put on the person
@@ -230,17 +337,42 @@ export default async function handler(req, res) {
         - XL: Oversized, loose-fitting, baggy
         - XXL: Very oversized, very loose, very baggy
         
-        IMPORTANT: 
-        - Do NOT use the clothing from the first image (person's original clothing)
-        - Use ONLY the garment from the matching product images (these are the store's products that the user wants to try on)
-        - Analyze ALL product images to determine their orientation (front/back/side)
-        - Use ONLY the product images that match the person's orientation in the first image
-        - The product images show the EXACT garment from the store that you must put on the person
-        - Adjust the size according to the selected size: ${size}
-        - The garment must be IDENTICAL to the one shown in the matching product images (the store's product)
-        - This is the garment that the user wants to try on from the store
+        CRITICAL RULES - ABSOLUTE REQUIREMENTS:
         
-        OUTPUT: Generate a photorealistic final image showing the person wearing the exact garment from the matching product images in the specified size. No text or descriptions.
+        1. ORIENTATION MATCHING IS MANDATORY:
+           - You MUST match the orientation of product images to the user's orientation
+           - FRONT-facing user → ONLY use FRONT-facing product images
+           - BACK-facing user → ONLY use BACK-facing product images
+           - This is NON-NEGOTIABLE - there are NO exceptions
+           - If you apply the wrong side (front to back or back to front), the result will be COMPLETELY WRONG
+        
+        2. ANALYSIS BEFORE ACTION:
+           - You MUST complete ALL 4 phases of analysis BEFORE applying the garment
+           - Do NOT rush - take time to analyze each image thoroughly
+           - When in doubt, analyze again - better to be slow and correct than fast and wrong
+        
+        3. QUALITY OVER QUANTITY:
+           - Using 1 correctly-oriented image is INFINITELY better than using 5 incorrectly-oriented images
+           - If you're not 100% certain about an image's orientation, DO NOT use it
+           - It's better to have less detail but correct orientation than perfect detail but wrong side
+        
+        4. FINAL CHECKPOINT:
+           - Before generating the final image, ask yourself:
+             * "Have I analyzed ALL product images?"
+             * "Am I CERTAIN about each image's orientation?"
+             * "Do ALL selected images match the user's orientation?"
+             * "Is there ANY chance I'm using the wrong side?"
+           - If ANY answer is "no" or "unsure", STOP and re-analyze
+        
+        5. GARMENT APPLICATION:
+           - Do NOT use the clothing from the first image (person's original clothing)
+           - Use ONLY the garment from the CORRECTLY-ORIENTED product images
+           - The product images show the EXACT garment from the store
+           - Adjust the size according to the selected size: ${size}
+           - The garment must be IDENTICAL to the one shown in the matching product images
+           - Apply the garment features to the CORRECT side (front to front, back to back)
+        
+        OUTPUT: Generate a photorealistic final image showing the person wearing the exact garment from the CORRECTLY-ORIENTED matching product images in the specified size. The garment must be on the CORRECT side (front if user is front-facing, back if user is back-facing). No text or descriptions.
         `;
 
         const parts = [
@@ -362,5 +494,6 @@ export default async function handler(req, res) {
         }
     }
 }
+
 
 

@@ -140,21 +140,72 @@ CRITICAL: The person in the first image MUST remain EXACTLY the same:
 }
 
 function safePickGeneratedImage(resp) {
+  // Estrategia 1: Buscar en candidates[0].content.parts
   try {
     const cand = resp?.candidates?.[0];
-    const parts = cand?.content?.parts || cand?.content?.[0]?.parts || [];
-    for (const p of parts) {
-      if (p?.inlineData?.data) return p.inlineData.data;
-      if (p?.inline_data?.data) return p.inline_data.data;
+    if (cand) {
+      // Intentar diferentes estructuras de content
+      const content = cand.content || cand?.content?.[0];
+      if (content) {
+        const parts = content.parts || content?.parts || [];
+        for (const p of parts) {
+          // Buscar inlineData (formato nuevo)
+          if (p?.inlineData?.data && typeof p.inlineData.data === 'string' && p.inlineData.data.length > 100) {
+            log('✅ Imagen encontrada en candidates[0].content.parts[].inlineData.data');
+            return p.inlineData.data;
+          }
+          // Buscar inline_data (formato alternativo)
+          if (p?.inline_data?.data && typeof p.inline_data.data === 'string' && p.inline_data.data.length > 100) {
+            log('✅ Imagen encontrada en candidates[0].content.parts[].inline_data.data');
+            return p.inline_data.data;
+          }
+        }
+      }
     }
   } catch (e) {
     err('safePickGeneratedImage path error:', e);
   }
+  
+  // Estrategia 2: Buscar en output[0].inlineData
   try {
-    if (resp?.output?.[0]?.inlineData?.data) return resp.output[0].inlineData.data;
+    if (resp?.output?.[0]?.inlineData?.data && typeof resp.output[0].inlineData.data === 'string' && resp.output[0].inlineData.data.length > 100) {
+      log('✅ Imagen encontrada en output[0].inlineData.data');
+      return resp.output[0].inlineData.data;
+    }
+    if (resp?.output?.[0]?.inline_data?.data && typeof resp.output[0].inline_data.data === 'string' && resp.output[0].inline_data.data.length > 100) {
+      log('✅ Imagen encontrada en output[0].inline_data.data');
+      return resp.output[0].inline_data.data;
+    }
   } catch (e) {
     err('safePickGeneratedImage alt path error:', e);
   }
+  
+  // Estrategia 3: Buscar en todos los candidates
+  try {
+    if (resp?.candidates && Array.isArray(resp.candidates)) {
+      for (let i = 0; i < resp.candidates.length; i++) {
+        const cand = resp.candidates[i];
+        const content = cand?.content;
+        if (content) {
+          const parts = content.parts || [];
+          for (const p of parts) {
+            if (p?.inlineData?.data && typeof p.inlineData.data === 'string' && p.inlineData.data.length > 100) {
+              log(`✅ Imagen encontrada en candidates[${i}].content.parts[].inlineData.data`);
+              return p.inlineData.data;
+            }
+            if (p?.inline_data?.data && typeof p.inline_data.data === 'string' && p.inline_data.data.length > 100) {
+              log(`✅ Imagen encontrada en candidates[${i}].content.parts[].inline_data.data`);
+              return p.inline_data.data;
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    err('safePickGeneratedImage candidates loop error:', e);
+  }
+  
+  log('⚠️ No se encontró imagen en ninguna ubicación conocida de la respuesta');
   return null;
 }
 
@@ -256,6 +307,7 @@ export default async function handler(req, res) {
     }
 
     log(`Parts a enviar: ${parts.length} | total aprox MB: ${totalMB.toFixed(2)} | orientation=${selectedOrientation} | size=${size || 'M'}`);
+    log(`Parts breakdown: prompt=${parts[0]?.text ? 'SÍ' : 'NO'} | userImage=${parts[1]?.inlineData ? 'SÍ' : 'NO'} | productImages=${parts.length - 2} imágenes`);
 
     // Init modelo
     const genAI = new GoogleGenerativeAI(API_KEY);
@@ -264,9 +316,46 @@ export default async function handler(req, res) {
     // Llamada
     let result, response;
     try {
+      log('📤 Enviando solicitud a Google AI...');
+      const requestStartTime = Date.now();
       result = await model.generateContent({ contents: [{ role: 'user', parts }] });
       response = await result.response;
+      const requestDuration = Date.now() - requestStartTime;
+      log(`✅ Respuesta recibida de Google AI en ${requestDuration}ms`);
+      
       if (!response) throw new Error('Sin respuesta de Gemini');
+      
+      // Log básico de la estructura de la respuesta
+      log('Response structure:', {
+        hasCandidates: !!response.candidates,
+        candidatesCount: response.candidates?.length || 0,
+        firstCandidateHasContent: !!response.candidates?.[0]?.content,
+        firstCandidatePartsCount: response.candidates?.[0]?.content?.parts?.length || 0
+      });
+      
+      // Verificar si hay bloqueos de seguridad o errores
+      if (response.candidates?.[0]?.finishReason) {
+        const finishReason = response.candidates[0].finishReason;
+        log(`Finish reason: ${finishReason}`);
+        if (finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS') {
+          warn(`⚠️ Finish reason inesperado: ${finishReason}`);
+          if (finishReason === 'SAFETY') {
+            throw new Error('Contenido bloqueado por filtros de seguridad de Google AI');
+          }
+          if (finishReason === 'RECITATION') {
+            throw new Error('Contenido bloqueado por políticas de recitación de Google AI');
+          }
+        }
+      }
+      
+      // Verificar si hay bloqueos de seguridad en otros lugares
+      if (response.promptFeedback) {
+        log('Prompt feedback:', response.promptFeedback);
+        if (response.promptFeedback.blockReason) {
+          warn(`⚠️ Prompt bloqueado: ${response.promptFeedback.blockReason}`);
+          throw new Error(`Prompt bloqueado por Google AI: ${response.promptFeedback.blockReason}`);
+        }
+      }
     } catch (aiError) {
       // Clasificación de errores (tus códigos)
       const msg = aiError?.message || '';
@@ -279,8 +368,42 @@ export default async function handler(req, res) {
     // Extraer imagen generada
     const imageBase64 = safePickGeneratedImage(response);
     if (!imageBase64 || typeof imageBase64 !== 'string' || imageBase64.length < 100) {
-      if (IS_DEV) log('Respuesta cruda:', JSON.stringify(response, null, 2));
-      throw new Error('No se pudo extraer la imagen generada (imageData vacío o inválido)');
+      // Log detallado de la respuesta para diagnóstico
+      log('⚠️ No se pudo extraer imagen de la respuesta de Google AI');
+      log('Response structure:', {
+        hasResponse: !!response,
+        hasCandidates: !!response?.candidates,
+        candidatesLength: response?.candidates?.length || 0,
+        firstCandidate: response?.candidates?.[0] ? {
+          hasContent: !!response.candidates[0].content,
+          hasParts: !!response.candidates[0].content?.parts,
+          partsLength: response.candidates[0].content?.parts?.length || 0,
+          partsTypes: response.candidates[0].content?.parts?.map(p => ({
+            hasInlineData: !!p?.inlineData,
+            hasInline_data: !!p?.inline_data,
+            hasText: !!p?.text,
+            textPreview: p?.text ? p.text.substring(0, 100) : null
+          })) || []
+        } : null,
+        hasOutput: !!response?.output,
+        outputLength: response?.output?.length || 0
+      });
+      
+      // Si hay texto en la respuesta, loguearlo (puede ser un error o explicación de la IA)
+      if (response?.candidates?.[0]?.content?.parts) {
+        const textParts = response.candidates[0].content.parts.filter(p => p?.text);
+        if (textParts.length > 0) {
+          log('⚠️ La IA retornó texto en lugar de imagen:');
+          textParts.forEach((part, idx) => {
+            log(`   Texto [${idx}]:`, part.text);
+          });
+        }
+      }
+      
+      if (IS_DEV) {
+        log('Respuesta cruda completa:', JSON.stringify(response, null, 2));
+      }
+      throw new Error('No se pudo extraer la imagen generada (imageData vacío o inválido). La IA puede haber retornado texto en lugar de una imagen.');
     }
 
     log('Imagen generada OK');
@@ -352,5 +475,4 @@ export default async function handler(req, res) {
     }
   }
 }
-
 

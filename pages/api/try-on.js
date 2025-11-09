@@ -58,48 +58,38 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
 
   return `
 ROL Y TAREA:
-Eres un experto en moda y fotografía profesional.
-Tu tarea es crear una imagen realista y precisa, donde el usuario esté vistiendo la prenda mostrada exactamente como corresponde según su orientación corporal.
-
+Eres una API de generación de imágenes experta en moda y fotografía profesional.
+Tu tarea es producir una imagen fotorrealista de la más alta precisión, donde el usuario esté vistiendo la prenda proporcionada, aplicando el diseño frontal o trasero de la prenda EXCLUSIVAMENTE según la orientación corporal del usuario, sin margen de error.
 ⸻
-
-🔍 ANÁLISIS DE IMÁGENES DE REFERENCIA
-
-1️⃣ Recibirás 1 o más fotos de la prenda.
-2️⃣ SI HAY SOLO 1 FOTO: úsala como referencia única.
-3️⃣ SI HAY MÚLTIPLES FOTOS (2 o más):
- - Analiza TODAS antes de generar.
- - Clasifica cada una como:
-  🟦 FRONT = vista frontal de la prenda (rostro visible, botones, cuello delantero, logos o estampados delanteros).
-  🟥 BACK = vista trasera (nuca, costuras de espalda, etiquetas traseras, logos o gráficos traseros).
- - Identifica y memoriza:
-  • Diferencias entre diseño frontal y trasero.
-  • Estampados, gráficos o logotipos en cada lado.
-  • Cierres, botones, pliegues, bolsillos o detalles de cada vista.
-
+🔍 ANÁLISIS DE IMÁGENES DE REFERENCIA (PROTOCOLO DE IDENTIFICACIÓN OBLIGATORIO)
+Se te proporcionará una imagen del usuario y una o más imágenes de referencia de la prenda.
+Si hay SOLO 1 FOTO de la prenda:
+Prioridad: Asume que esta imagen representa la vista FRONTAL de la prenda, a menos que elementos inequívocos (ej. una etiqueta en la nuca, un gráfico claramente posterior) demuestren lo contrario.
+Modo Seguro: Si la orientación del usuario requiere la vista TRASERA y solo tienes una foto de la prenda (asumida frontal) que no muestra la espalda, DEBES ABSTENERTE DE GENERAR y notificar la insuficiencia de datos.
+Si hay MÚLTIPLES FOTOS (2 o más) de la prenda:
+PROTOCOLO DE CLASIFICACIÓN RIGUROSO: Debes analizar CADA imagen para clasificarla como FRONTAL (🟦) o TRASERA (🟥), sin ambigüedad.
+CRITERIOS FRONTAL (🟦): Claramente visible el frente de un modelo, botones/cierres frontales, escote delantero, cuello visible, bolsillos de pecho, logos/gráficos diseñados explícitamente para el pecho/abdomen.
+CRITERIOS TRASERA (🟥): Claramente visible la nuca/espalda de un modelo, costuras de hombros/espalda, etiquetas de marca/talla en la nuca, gráficos/estampados diseñados explícitamente para la espalda.
+EXTRACCIÓN DE DISEÑO: Identifica y guarda en memoria de trabajo los detalles exactos de los gráficos, estampados y características únicas de CADA LADO (frontal y trasero).
 ⸻
-
-🧭 ORIENTACIÓN CORRECTA (REGLA DE ORO)
-
-4️⃣ Si el usuario está de frente, usa EXCLUSIVAMENTE el diseño FRONTAL de la prenda.
-5️⃣ Si el usuario está de espaldas, usa EXCLUSIVAMENTE el diseño TRASERO de la prenda.
-6️⃣ BAJO NINGUNA CIRCUNSTANCIA:
- 🚫 NO pongas el gráfico trasero adelante.
- 🚫 NO pongas el diseño frontal atrás.
- 🧱 REGLA IRROMPIBLE:
-  > FRONT → FRONT. BACK → BACK. NEVER REVERSE. NEVER SWAP.
-7️⃣ Si existe cualquier duda sobre la orientación, detente y analiza de nuevo antes de generar.
- (Es preferible no generar que invertir los lados).
-
+🧭 ORIENTACIÓN Y APLICACIÓN DE DISEÑO (LA REGLA INQUEBRANTABLE - PROTOCOLO DE CONFORMIDAD ABSOLUTA)
+APLICACIÓN ESTRICTA DEL DISEÑO SEGÚN LA ORIENTACIÓN DEL USUARIO:
+USUARIO DE FRENTE: Debes aplicar única y exclusivamente el diseño, gráficos y detalles identificados como FRONTAL (🟦) de la prenda. No uses ninguna parte del diseño trasero.
+USUARIO DE ESPALDAS: Debes aplicar única y exclusivamente el diseño, gráficos y detalles identificados como TRASERA (🟥) de la prenda. No uses ninguna parte del diseño frontal.
+PROTOCOLO DE VALIDACIÓN Y FALLA (CRÍTICO):
+AUTO-VERIFICACIÓN OBLIGATORIA: Antes de generar cualquier imagen, realiza una auto-verificación exhaustiva para confirmar que el diseño que estás a punto de aplicar a la prenda coincide PERFECTAMENTE con la orientación del usuario y con la imagen de referencia correspondiente (frontal si el usuario está de frente, trasera si el usuario está de espaldas).
+CONDICIÓN DE FALLA - MODO SEGURO:
+Si el usuario está de frente y NO se ha identificado una imagen de referencia CLARA y UNÍVOCA del lado FRONTAL de la prenda (o si es ambigua).
+Si el usuario está de espaldas y NO se ha identificado una imagen de referencia CLARA y UNÍVOCA del lado TRASERO de la prenda (o si es ambigua).
+Si existe la MÁS MÍNIMA DUDA sobre qué lado aplicar o si al aplicar un lado se corre el riesgo de mostrar el diseño incorrecto.
+EN CUALQUIERA DE ESTOS CASOS, DEBES ABSTENERTE POR COMPLETO DE GENERAR CUALQUIER IMAGEN. Tu respuesta debe ser un mensaje indicando que no se pudo generar debido a la ambigüedad o falta de referencia clara para el lado requerido de la prenda.
 ⸻
-
-✨ AJUSTE Y REALISMO
-
-8️⃣ Talle seleccionado: ${size}
-9️⃣ Ajusta el tamaño y caída según ese talle.
-🔟 Mantén la pose, expresión y cuerpo del usuario exactamente iguales.
-11️⃣ La prenda debe integrarse naturalmente, con sombras, pliegues y textura realistas.
-12️⃣ El resultado final debe parecer una foto profesional, no una composición artificial.
+✨ AJUSTE Y REALISMO (RENDERIZACIÓN FOTORREALISTA)
+Talle seleccionado: ${size}
+Ajusta el tamaño y la caída de la prenda para que coincidan con el talle indicado, adaptándose naturalmente al cuerpo del usuario.
+Mantén la pose, la expresión facial y la complexión corporal del usuario idénticas a la imagen original.
+La prenda debe integrarse de forma impecable, con pliegues, sombras, texturas de tela y efectos de iluminación que sean completamente consistentes con el entorno y la iluminación de la foto original del usuario.
+El resultado final debe ser indistinguible de una fotografía profesional real, sin ningún indicio de manipulación artificial.
 `.trim();
 }
 

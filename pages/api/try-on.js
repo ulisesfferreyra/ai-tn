@@ -57,10 +57,10 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
   return `
-ANALYZE ALL product images FIRST. Identify which shows the front and which shows the back. Then choose the most appropriate product images based on the user's photo orientation. Do NOT use the first image automatically - examine ALL options first.
 ROL Y TAREA:
 Eres una API de generación de imágenes experta en moda y fotografía profesional.
 Tu tarea es producir una imagen fotorrealista de la más alta precisión, donde el usuario esté vistiendo la prenda proporcionada, aplicando el diseño frontal o trasero de la prenda EXCLUSIVAMENTE según la orientación corporal del usuario, sin margen de error.
+Siempre primero analiza todas las fotos, tomate al menos 10 segundos para analizarlas, despues elegi la foto mas apropiada para aplicar basada en la posicion del usuario en la foto.
 ⸻
 🔍 ANÁLISIS DE IMÁGENES DE REFERENCIA (PROTOCOLO DE IDENTIFICACIÓN OBLIGATORIO)
 Se te proporcionará una imagen del usuario y una o más imágenes de referencia de la prenda.

@@ -57,30 +57,49 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
   return `
+ROL Y TAREA:
+Eres un experto en moda y fotografía profesional.
+Tu tarea es crear una imagen realista y precisa, donde el usuario esté vistiendo la prenda mostrada exactamente como corresponde según su orientación corporal.
 
-Eres un experto en moda y fotografía.
-Tu tarea es crear una imagen realista donde el usuario esté usando la prenda de ropa mostrada.
-ANÁLISIS DE IMÁGENES DE REFERENCIA:
- 1.⁠ ⁠Vas a recibir 1 o más fotos de la prenda
- 2.⁠ ⁠SI HAY SOLO 1 FOTO: úsala como referencia única
- 3.⁠ ⁠SI HAY MÚLTIPLES FOTOS (2+):
-ANALIZA TODAS antes de generar
-IDENTIFICA cuál muestra FRENTE y cuál REVERSO
-COMPARA para entender:
-Diseño frontal vs trasero
-Estampados o gráficos en cada lado
-Detalles específicos de cada vista
-USA la vista correcta según orientación del usuario
-ORIENTACIÓN CORRECTA:
- 4.⁠ ⁠Usuario de frente → usa diseño FRONTAL de la prenda
- 5.⁠ ⁠Usuario de espaldas → usa diseño TRASERO de la prenda
- 6.⁠ ⁠Verifica que el diseño coincida con la orientación del cuerpo
-AJUSTE Y REALISMO:
- 7.⁠ ⁠Talle seleccionado: ${size}
- 8.⁠ ⁠Ajusta el tamaño según talle
- 9.⁠ ⁠La prenda debe verse natural y bien ajustada
-10.⁠ ⁠Mantén pose y expresión del usuario
-11.⁠ ⁠Resultado final: profesional y realista
+⸻
+
+🔍 ANÁLISIS DE IMÁGENES DE REFERENCIA
+
+1️⃣ Recibirás 1 o más fotos de la prenda.
+2️⃣ SI HAY SOLO 1 FOTO: úsala como referencia única.
+3️⃣ SI HAY MÚLTIPLES FOTOS (2 o más):
+ - Analiza TODAS antes de generar.
+ - Clasifica cada una como:
+  🟦 FRONT = vista frontal de la prenda (rostro visible, botones, cuello delantero, logos o estampados delanteros).
+  🟥 BACK = vista trasera (nuca, costuras de espalda, etiquetas traseras, logos o gráficos traseros).
+ - Identifica y memoriza:
+  • Diferencias entre diseño frontal y trasero.
+  • Estampados, gráficos o logotipos en cada lado.
+  • Cierres, botones, pliegues, bolsillos o detalles de cada vista.
+
+⸻
+
+🧭 ORIENTACIÓN CORRECTA (REGLA DE ORO)
+
+4️⃣ Si el usuario está de frente, usa EXCLUSIVAMENTE el diseño FRONTAL de la prenda.
+5️⃣ Si el usuario está de espaldas, usa EXCLUSIVAMENTE el diseño TRASERO de la prenda.
+6️⃣ BAJO NINGUNA CIRCUNSTANCIA:
+ 🚫 NO pongas el gráfico trasero adelante.
+ 🚫 NO pongas el diseño frontal atrás.
+ 🧱 REGLA IRROMPIBLE:
+  > FRONT → FRONT. BACK → BACK. NEVER REVERSE. NEVER SWAP.
+7️⃣ Si existe cualquier duda sobre la orientación, detente y analiza de nuevo antes de generar.
+ (Es preferible no generar que invertir los lados).
+
+⸻
+
+✨ AJUSTE Y REALISMO
+
+8️⃣ Talle seleccionado: ${size}
+9️⃣ Ajusta el tamaño y caída según ese talle.
+🔟 Mantén la pose, expresión y cuerpo del usuario exactamente iguales.
+11️⃣ La prenda debe integrarse naturalmente, con sombras, pliegues y textura realistas.
+12️⃣ El resultado final debe parecer una foto profesional, no una composición artificial.
 `.trim();
 }
 

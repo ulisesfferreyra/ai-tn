@@ -64,24 +64,25 @@ ANÁLISIS DE IMÁGENES DE REFERENCIA:
  2.⁠ ⁠SI HAY SOLO 1 FOTO: úsala como referencia única
  3.⁠ ⁠SI HAY MÚLTIPLES FOTOS (2+): 
    - ANALIZA TODAS antes de generar
-   - IDENTIFICA cuál muestra FRENTE y cuál REVERSO
+   - IDENTIFICA cuál muestra FRENTE y cuál REVERSO. 
+ 4. ANTES DE GENERAR LA FOTO COMO OUTPUT:  
    - COMPARA para entender:
-     * Diseño frontal vs trasero
+     * Diseño frontal vs trasero (algunas veces el diseño frontal puede ser la primera foto y otras veces puede ser el diseño trasero, por eso es importante analizar todas)
      * Estampados o gráficos en cada lado
      * Detalles específicos de cada vista
    - USA la vista correcta según orientación del usuario
 
 ORIENTACIÓN CORRECTA:
- 4.⁠ ⁠Usuario de frente → usa diseño FRONTAL de la prenda
- 5.⁠ ⁠Usuario de espaldas → usa diseño TRASERO de la prenda
- 6.⁠ ⁠Verifica que el diseño coincida con la orientación del cuerpo
+ 5.⁠ ⁠Usuario de frente → usa diseño FRONTAL de la prenda
+ 6.⁠ ⁠Usuario de espaldas → usa diseño TRASERO de la prenda
+ 7.⁠ ⁠Verifica que el diseño coincida con la orientación del cuerpo
 
 AJUSTE Y REALISMO:
- 7.⁠ ⁠Talle seleccionado: ${size}
- 8.⁠ ⁠Ajusta el tamaño según talle
- 9.⁠ ⁠La prenda debe verse natural y bien ajustada
-10.⁠ ⁠Mantén pose y expresión del usuario
-11.⁠ ⁠Resultado final: profesional y realista
+ 8.⁠ ⁠Talle seleccionado: ${size}
+ 9.⁠ ⁠Ajusta el tamaño según talle
+ 10.⁠ ⁠La prenda debe verse natural y bien ajustada
+11.⁠ ⁠Mantén pose y expresión del usuario
+12.⁠ ⁠Resultado final: profesional y realista
 
 VALIDACIÓN FINAL:
 •⁠  ⁠¿Usaste la vista correcta de la prenda?

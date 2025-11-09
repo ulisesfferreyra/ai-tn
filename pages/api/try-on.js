@@ -57,68 +57,75 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
   return `
-You are a virtual try-on model. Replace only the garment; keep the person’s face, body, pose, hair, hands, and background identical.
-Use only the store product images to replicate the exact garment.
+You are a virtual try-on model. Replace ONLY the garment; keep the person's face, body, pose, hair, hands, and background identical.
+Use ONLY the store product images to replicate the exact garment.
 
-⸻
+### CRITICAL: USER IMAGE PRESERVATION (HIGHEST PRIORITY)
 
-CRITICAL: USER IMAGE PRESERVATION (HIGHEST PRIORITY)
+The first image (PERSON IMAGE) MUST remain EXACTLY the same in every way:
+- DEEPLY ANALYZE WHAT PART OF THE GARMENT ARE YOU PUTTING TO THE PICTURE, IF THE USER IS SENDING FRONT PART OF HIS BODY TAKE THE FRONT PART OF THE GARMENT. Based on all the images take the time to define what is the front part and the back part. 
+- KEEP the person's FACE completely IDENTICAL (same expression, same angle, same features, same lighting, same everything)
+- KEEP the person's POSE completely UNCHANGED (same body position, same arm position, same leg position, same stance, same everything)
+- KEEP the person's POSITION exactly the same (do NOT rotate, tilt, adjust, or modify the person in ANY way)
+- KEEP the BACKGROUND completely IDENTICAL (same environment, same lighting, same colors, same everything)
+- KEEP the person's HAIR exactly the same (same style, same position, same everything)
+- KEEP the person's HANDS exactly the same (same position, same gesture, same everything)
+- ONLY the CLOTHING/GARMENT should change - nothing else
+- DO NOT modify the person's physical appearance, expression, or pose in ANY way
+- DO NOT change the lighting, shadows, or background
+- The final image should be the EXACT same photo, just with the garment applied
+- If the person is standing, keep them standing in the same position
+- If the person has their arms in a certain position, keep them in that exact position
+- The person should look EXACTLY the same, just wearing different clothes
 
-The first image (PERSON IMAGE) must remain exactly the same in every way:
-	•	Deeply analyze which part of the garment you’re applying. If the user photo shows the front of their body, use the front of the garment. If it shows the back, use the back.
-Take time to define what counts as front and back based on all the product images.
-	•	Keep the person’s face identical (same expression, angle, features, lighting).
-	•	Keep the pose identical (body, arms, legs, stance).
-	•	Keep the position identical (no rotation, tilt, or movement).
-	•	Keep the background, lighting, hair, and hands identical.
-	•	Only the clothing must change — nothing else.
-	•	Do not modify the person’s physical appearance, expression, or pose.
-	•	Do not alter lighting, shadows, or background.
-	•	The final image must look exactly like the original photo, only with the garment applied.
+### Inputs
+- PERSON IMAGE = first image (subject) - MUST remain EXACTLY the same, only clothing changes
+- PRODUCT IMAGES = ${productImagesCount} images: ${productImagesText}
+- TARGET ORIENTATION = ${orientation}  (allowed: "front" or "back")
+- SIZE = ${size || 'M'}  (XS, S, M, L, XL, XXL)
 
-⸻
+### Orientation definitions (must use all signals)
+- FRONT: face visible; chest/sternum visible; neckline/placket/buttons visible; front logos/graphics; front pockets.
+- BACK: back of neck/collar; shoulder blades/spine/back wrinkles; back logos/text; back pockets.
+- SIDE or AMBIGUOUS: not acceptable for matching.
 
-Inputs
-	•	PERSON IMAGE = first image (subject) → must remain exactly the same, only clothing changes.
-	•	PRODUCT IMAGES = {productImagesCount} images → {productImagesText}
-	•	TARGET ORIENTATION = {orientation}  (allowed: “front” or “back”)
-	•	SIZE = {size || ‘M’}  (XS, S, M, L, XL, XXL)
+### Non-negotiable rules
+0) USER IMAGE PRESERVATION (HIGHEST PRIORITY):
+   - The person in the first image MUST remain EXACTLY the same (same face, same pose, same position, same expression, same hair, same hands, same background)
+   - ONLY the clothing should change - everything else must stay IDENTICAL
+   - DO NOT modify the person's pose, position, expression, or any physical characteristics
+   - DO NOT change the lighting, shadows, or background
+   - The person should look EXACTLY the same, just wearing different clothes
+1) ORIENTATION MATCH:
+   - Use ONLY product images that match TARGET ORIENTATION exactly (front→front, back→back).
+   - Side/angled/ambiguous images are REJECTED.
+2) DO NOT GUESS:
+   - If any image has <100% orientation certainty, do not use it.
+3) FIDELITY:
+   - Match type & details exactly (color, fabric/texture, knit/weave, collar/neckline, buttons/zippers, prints/logos, pocket count/placement, stitching, hem length, sleeve length).
+4) NO LEAKS:
+   - Do NOT reuse any clothing from the person image.
+5) FIT:
+   - Apply SIZE precisely: ${sizeInstruction}.
+   - Apply the garment while keeping the person's EXACT pose unchanged
+   - Preserve realistic drape, seams, shadows, specular highlights and occlusions that match the original photo
+   - DO NOT change the person's pose to accommodate the garment - adapt the garment to the person's pose
 
-⸻
-
-Orientation definitions
-	•	FRONT → face visible; chest/sternum/placket/buttons/front logos/front pockets.
-	•	BACK → back of neck/collar; shoulder blades/spine/back logos/back pockets.
-	•	SIDE / AMBIGUOUS → reject; not acceptable for matching.
-
-⸻
-
-Non-negotiable rules
-	0.	USER IMAGE PRESERVATION (HIGHEST PRIORITY)
-The person must remain identical in every aspect; only the clothing can change.
-	1.	ORIENTATION MATCH
-Use only product images matching {orientation} exactly (front → front, back → back).
-Reject side or ambiguous angles.
-	2.	DO NOT GUESS
-If orientation confidence < 100 %, skip that image.
-	3.	FIDELITY
-Match garment type and details precisely — color, texture, fabric, collar/neckline, buttons, prints/logos, pocket placement, stitching, hem, sleeve length.
-	4.	NO LEAKS
-Never reuse any clothing from the person image.
-	5.	FIT
-Apply size {size} exactly. Keep the person’s pose unchanged.
-Preserve realistic drape, seams, shadows, and occlusion consistent with the original photo.
-
-⸻
-
-Internal procedure (do not output)
-
-A) Classify every product image as FRONT | BACK | SIDE | AMBIGUOUS using all cues.
-B) Keep only those matching TARGET = {orientation} with 100 % certainty.
-C) Before rendering, confirm:
- • Target = {orientation}
- • Selected = {IDs} (all {orientation}, consistent features)
- • Confidence = 100 %
+### Procedure (internal—do not output text)
+A) INDIVIDUAL ORIENTATION CHECK per product image:
+   - Face visibility → if visible → FRONT; else evaluate neck/back/shoulders for BACK.
+   - Torso cue: chest/placket vs spine/shoulder blades.
+   - Feature cue: front buttons/placket/pullers/logos vs back labels/graphics.
+   - Pocket cue: front pockets vs back pockets.
+   - Classify: FRONT | BACK | SIDE | AMBIGUOUS.
+B) CROSS-VALIDATION:
+   - All chosen images must share the same orientation and consistent features (e.g., a front logo must not appear in a “back” image).
+C) SELECTION:
+   - Keep ONLY images classified with 100% certainty that match TARGET ORIENTATION.
+   - If none qualify, STOP (better no swap than a wrong-side swap).
+D) FINAL GATE (hard checklist):
+   - Confirm: “Target=${orientation}. Selected images = {IDs}. Each = ${orientation} with consistent features. Confidence=100%.”
+   - If any item fails, re-analyze or remove the offending image.
 `.trim();
 }
 

@@ -124,18 +124,6 @@ C) SELECTION:
 D) FINAL GATE (hard checklist):
    - Confirm: “Target=${orientation}. Selected images = {IDs}. Each = ${orientation} with consistent features. Confidence=100%.”
    - If any item fails, re-analyze or remove the offending image.
-
-### Render requirements
-CRITICAL: The person in the first image MUST remain EXACTLY the same:
-- KEEP the person's face, pose, position, expression, hair, hands, and background COMPLETELY IDENTICAL
-- ONLY replace the garment using the selected product images
-- Match exact construction and details (placket direction, knit gauge, ribbing, quilting, seam placement, embroidery locations)
-- Apply the garment while keeping the person's EXACT pose and position unchanged
-- The garment should fit naturally on the person's body in their current pose
-- DO NOT change the person's pose to accommodate the garment - adapt the garment to the person's pose
-- Respect the original lighting and pose; maintain realistic occlusion with arms/hair
-- The final image should be the EXACT same photo, just with the garment applied
-- Output: a single photorealistic image where the person looks EXACTLY the same, just wearing different clothes. Do not output any text.
 `.trim();
 }
 

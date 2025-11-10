@@ -58,45 +58,45 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
 
   return `
 IMAGE ROLES AND ORDER:
-- FIRST IMAGE: The person wearing clothes (preserve face, body, pose, and background completely unchanged)
-- REMAINING IMAGES (2+): The store's product garment from different angles
+•⁠  ⁠FIRST IMAGE: The person wearing clothes (preserve face, body, pose, and background completely unchanged)
+•⁠  ⁠REMAINING IMAGES (2+): The store's product garment from different angles
 
 CRITICAL: GARMENT ORIENTATION DETECTION
 Use images showing people/models wearing the garment as PRIMARY reference to identify FRONT vs BACK:
 
 PRIORITY 1 - Images with people/models:
-- Analyze how the person is wearing the garment in product photos
-- The side facing the camera when the model faces forward = FRONT
-- The side facing away when model's back is to camera = BACK
-- Use the model's body orientation as the definitive reference
+•⁠  ⁠Analyze how the person is wearing the garment in product photos
+•⁠  ⁠The side facing the camera when the model faces forward = FRONT
+•⁠  ⁠The side facing away when model's back is to camera = BACK
+•⁠  ⁠Use the model's body orientation as the definitive reference
 
 PRIORITY 2 - If no people in product images, analyze garment structure:
-- Front indicators: Neckline opening, collar, button/zipper placement, typical wear position
-- Garment logic: Where tags are usually placed (back neck), how it naturally drapes
-- DO NOT rely on design size/complexity - large designs can be on front OR back
+•⁠  ⁠Front indicators: Neckline opening, collar, button/zipper placement, typical wear position
+•⁠  ⁠Garment logic: Where tags are usually placed (back neck), how it naturally drapes
+•⁠  ⁠DO NOT rely on design size/complexity - large designs can be on front OR back
 
 PRIORITY 3 - If orientation remains unclear:
-- Default to the first image showing the most typical wearing position
-- Request clarification if confidence is low
+•⁠  ⁠Default to the first image showing the most typical wearing position
+•⁠  ⁠Request clarification if confidence is low
 
 IMPORTANT: Design prominence (logos, graphics, text) is NOT a reliable indicator of front vs back. Always prioritize human-worn reference images.
 
 GARMENT REPLICATION REQUIREMENTS:
-1. GARMENT TYPE: Identify and replicate the exact type from the product images
+1.⁠ ⁠GARMENT TYPE: Identify and replicate the exact type from the product images
    - Basic t-shirt → basic t-shirt (no collar, no buttons)
    - Polo shirt → polo shirt (with collar and buttons)
    - Hoodie → hoodie
    - Dress → dress
    - Any other garment → replicate that specific type
 
-2. EXACT VISUAL MATCH (from identified FRONT view):
+2.⁠ ⁠EXACT VISUAL MATCH (from identified FRONT view):
    - Pattern & Design: Copy ALL patterns, stripes, prints, logos, graphics exactly as shown on FRONT
    - Colors: Match EXACT colors, shades, tones, and color combinations
    - Fabric Texture: Replicate the material appearance (cotton, denim, silk, knit, etc.)
    - Structure: Preserve neckline, collar type, sleeve length/style, buttons, zippers, pockets
    - Details: Include ALL seams, stitching, labels, tags, decorative elements
 
-3. SIZE ADJUSTMENT (${sizeInstruction}):
+3.⁠ ⁠SIZE ADJUSTMENT (${sizeInstruction}):
    - XS: Very fitted, tight, form-fitting
    - S: Fitted, slightly snug, close to body
    - M: Standard fit, comfortable, natural
@@ -117,24 +117,24 @@ MANDATORY QUALITY CHECKS - OUTPUT MUST MEET ALL:
 
 CRITICAL RULES:
 ✓ DO:
-- Prioritize images showing people/models wearing the garment to determine front/back orientation
-- Use ONLY the garment from the product images (not from person's photo)
-- Replace the person's original clothing completely with the correct FRONT view
-- Maintain the garment's exact design, style, and all details
-- Adjust fit naturally according to the specified size: ${size}
-- Ensure realistic lighting, shadows, fabric drape, and natural wrinkles
-- Preserve person's EXACT original pose, face, and background
+•⁠  ⁠Prioritize images showing people/models wearing the garment to determine front/back orientation
+•⁠  ⁠Use ONLY the garment from the product images (not from person's photo)
+•⁠  ⁠Replace the person's original clothing completely with the correct FRONT view
+•⁠  ⁠Maintain the garment's exact design, style, and all details
+•⁠  ⁠Adjust fit naturally according to the specified size: ${size}
+•⁠  ⁠Ensure realistic lighting, shadows, fabric drape, and natural wrinkles
+•⁠  ⁠Preserve person's EXACT original pose, face, and background
 
 ✗ DO NOT:
-- Assume design complexity indicates front vs back
-- Rely solely on logo/graphic placement to determine orientation
-- Use the back view as the primary garment view
-- Use or reference the clothing from the person's original photo
-- Create a different garment or modify the design
-- Change the person's pose, facial features, or background
-- Add patterns, colors, or details not in the product images
-- Remove patterns, colors, or details that ARE in the product images
-- Generate output if any quality check fails
+•⁠  ⁠Assume design complexity indicates front vs back
+•⁠  ⁠Rely solely on logo/graphic placement to determine orientation
+•⁠  ⁠Use the back view as the primary garment view
+•⁠  ⁠Use or reference the clothing from the person's original photo
+•⁠  ⁠Create a different garment or modify the design
+•⁠  ⁠Change the person's pose, facial features, or background
+•⁠  ⁠Add patterns, colors, or details not in the product images
+•⁠  ⁠Remove patterns, colors, or details that ARE in the product images
+•⁠  ⁠Generate output if any quality check fails
 
 IF ANY QUALITY CHECK FAILS: Do not generate output. Return error code with specific failure reason.
 

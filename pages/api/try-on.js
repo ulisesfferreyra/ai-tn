@@ -57,88 +57,35 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
   return `
-IMAGE ROLES AND ORDER:
-•⁠  ⁠FIRST IMAGE: The person wearing clothes (preserve face, body, pose, and background completely unchanged)
-•⁠  ⁠REMAINING IMAGES (2+): The store's product garment from different angles
+DRESS THE USER WITH THE EXACT GARMENT FROM THE PRODUCT IMAGES.
 
-CRITICAL: GARMENT ORIENTATION DETECTION
-Use images showing people/models wearing the garment as PRIMARY reference to identify FRONT vs BACK:
+IMPORTANT: After this message, you will receive:
+1.⁠ ⁠The user's photo (person)
+2.⁠ ⁠X product garment image(s) from different angles
 
-PRIORITY 1 - Images with people/models:
-•⁠  ⁠Analyze how the person is wearing the garment in product photos
-•⁠  ⁠The side facing the camera when the model faces forward = FRONT
-•⁠  ⁠The side facing away when model's back is to camera = BACK
-•⁠  ⁠Use the model's body orientation as the definitive reference
+FRONT vs BACK DETECTION:
+•⁠  ⁠If product images show a person/model wearing the garment: Use their body orientation as reference (front = facing camera, back = facing away)
+•⁠  ⁠If no person in product images: Analyze garment structure (neckline, collar, typical wear position)
+•⁠  ⁠DO NOT assume large designs = front. Designs can be on front OR back.
 
-PRIORITY 2 - If no people in product images, analyze garment structure:
-•⁠  ⁠Front indicators: Neckline opening, collar, button/zipper placement, typical wear position
-•⁠  ⁠Garment logic: Where tags are usually placed (back neck), how it naturally drapes
-•⁠  ⁠DO NOT rely on design size/complexity - large designs can be on front OR back
+YOUR TASK:
+•⁠  ⁠Replace ONLY the user's clothing with the garment from the product images
+•⁠  ⁠Keep EVERYTHING else identical: body, face, pose, expression, background
+•⁠  ⁠Use EXACTLY the design, colors, patterns, and graphics from the product images (correct front orientation)
+•⁠  ⁠DO NOT invent new garments
+•⁠  ⁠DO NOT change the design
+•⁠  ⁠Size: ${size}
 
-PRIORITY 3 - If orientation remains unclear:
-•⁠  ⁠Default to the first image showing the most typical wearing position
-•⁠  ⁠Request clarification if confidence is low
+QUALITY REQUIREMENTS - If ANY fails, DO NOT generate output:
+✓ User's pose is EXACTLY preserved
+✓ User's face is unchanged and recognizable
+✓ Background is identical
+✓ Product garment is present and visible
+✓ Garment orientation is correct (front-facing)
+✓ Design matches exactly
+✓ Image looks photorealistic
 
-IMPORTANT: Design prominence (logos, graphics, text) is NOT a reliable indicator of front vs back. Always prioritize human-worn reference images.
-
-GARMENT REPLICATION REQUIREMENTS:
-1.⁠ ⁠GARMENT TYPE: Identify and replicate the exact type from the product images
-   - Basic t-shirt → basic t-shirt (no collar, no buttons)
-   - Polo shirt → polo shirt (with collar and buttons)
-   - Hoodie → hoodie
-   - Dress → dress
-   - Any other garment → replicate that specific type
-
-2.⁠ ⁠EXACT VISUAL MATCH (from identified FRONT view):
-   - Pattern & Design: Copy ALL patterns, stripes, prints, logos, graphics exactly as shown on FRONT
-   - Colors: Match EXACT colors, shades, tones, and color combinations
-   - Fabric Texture: Replicate the material appearance (cotton, denim, silk, knit, etc.)
-   - Structure: Preserve neckline, collar type, sleeve length/style, buttons, zippers, pockets
-   - Details: Include ALL seams, stitching, labels, tags, decorative elements
-
-3.⁠ ⁠SIZE ADJUSTMENT (${sizeInstruction}):
-   - XS: Very fitted, tight, form-fitting
-   - S: Fitted, slightly snug, close to body
-   - M: Standard fit, comfortable, natural
-   - L: Relaxed fit, slightly loose, comfortable
-   - XL: Oversized, loose-fitting, baggy
-   - XXL: Very oversized, very loose, very baggy
-
-MANDATORY QUALITY CHECKS - OUTPUT MUST MEET ALL:
-✓ Person's original pose is EXACTLY preserved (same body position, same angle, same stance)
-✓ Person's face is COMPLETELY unchanged and clearly recognizable
-✓ Background is IDENTICAL to the original person's photo
-✓ Garment from store's product images is PRESENT and VISIBLE on the person
-✓ Garment orientation is CORRECT (front view matching how models wear it in product photos)
-✓ Garment design matches EXACTLY (all patterns, logos, colors replicated from correct side)
-✓ Lighting and shadows are natural and consistent
-✓ No distortions, artifacts, or unrealistic elements
-✓ Image appears photorealistic and professionally composed
-
-CRITICAL RULES:
-✓ DO:
-•⁠  ⁠Prioritize images showing people/models wearing the garment to determine front/back orientation
-•⁠  ⁠Use ONLY the garment from the product images (not from person's photo)
-•⁠  ⁠Replace the person's original clothing completely with the correct FRONT view
-•⁠  ⁠Maintain the garment's exact design, style, and all details
-•⁠  ⁠Adjust fit naturally according to the specified size: ${size}
-•⁠  ⁠Ensure realistic lighting, shadows, fabric drape, and natural wrinkles
-•⁠  ⁠Preserve person's EXACT original pose, face, and background
-
-✗ DO NOT:
-•⁠  ⁠Assume design complexity indicates front vs back
-•⁠  ⁠Rely solely on logo/graphic placement to determine orientation
-•⁠  ⁠Use the back view as the primary garment view
-•⁠  ⁠Use or reference the clothing from the person's original photo
-•⁠  ⁠Create a different garment or modify the design
-•⁠  ⁠Change the person's pose, facial features, or background
-•⁠  ⁠Add patterns, colors, or details not in the product images
-•⁠  ⁠Remove patterns, colors, or details that ARE in the product images
-•⁠  ⁠Generate output if any quality check fails
-
-IF ANY QUALITY CHECK FAILS: Do not generate output. Return error code with specific failure reason.
-
-OUTPUT: A single photorealistic image showing the person wearing the IDENTICAL garment (correctly oriented FRONT view) from the store's product images in the specified size, with EXACT preservation of the person's original pose, face, and background. No text, watermarks, or additional elements.
+RESULT: The user wearing EXACTLY the garment from the product images, nothing more.
 `.trim();
 }
 

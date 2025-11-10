@@ -193,11 +193,11 @@ function safePickGeneratedImage(resp) {
           const parts = content.parts || [];
           for (const p of parts) {
             if (p?.inlineData?.data && typeof p.inlineData.data === 'string' && p.inlineData.data.length > 100) {
-              log(⁠ ✅ Imagen encontrada en candidates[${i}].content.parts[].inlineData.data ⁠);
+              log(`✅ Imagen encontrada en candidates[${i}].content.parts[].inlineData.data`);
               return p.inlineData.data;
             }
             if (p?.inline_data?.data && typeof p.inline_data.data === 'string' && p.inline_data.data.length > 100) {
-              log(⁠ ✅ Imagen encontrada en candidates[${i}].content.parts[].inline_data.data ⁠);
+              log(`✅ Imagen encontrada en candidates[${i}].content.parts[].inline_data.data`);
               return p.inline_data.data;
             }
           }
@@ -262,7 +262,7 @@ export default async function handler(req, res) {
     const productImagesText =
       productImagesCount === 0 ? 'no product images (reject if none match)' :
       productImagesCount === 1 ? 'the second image' :
-      ⁠ images 2 through ${productImagesCount + 1} ⁠;
+      `images 2 through ${productImagesCount + 1}`;
 
     // PROMPT unificado (NO TOCAR)
     const prompt = buildPrompt({
@@ -286,31 +286,31 @@ export default async function handler(req, res) {
     for (let i = 0; i < productImagesArray.length; i++) {
       const raw = productImagesArray[i];
       try {
-        if (!raw || typeof raw !== 'string') { warn(⁠ productImages[${i}] inválida (no string) ⁠); continue; }
+        if (!raw || typeof raw !== 'string') { warn(`productImages[${i}] inválida (no string)`); continue; }
         const parsed = parseDataUrl(raw);
-        if (!parsed) { warn(⁠ productImages[${i}] no es data URL válida ⁠); continue; }
+        if (!parsed) { warn(`productImages[${i}] no es data URL válida`); continue; }
 
         const supported = /^(image\/)(jpeg|jpg|png|webp)$/i.test(parsed.mime);
-        if (!supported) { warn(⁠ productImages[${i}] formato no soportado: ${parsed.mime} ⁠); continue; }
+        if (!supported) { warn(`productImages[${i}] formato no soportado: ${parsed.mime}`); continue; }
 
         // Calcular tamaño aprox del base64 (antes de normalizar)
         const approxMB = parsed.base64.length / 1024 / 1024;
-        if (approxMB > maxImageSizeMB) { warn(⁠ productImages[${i}] > ${maxImageSizeMB}MB (${approxMB.toFixed(2)} MB) ⁠); continue; }
+        if (approxMB > maxImageSizeMB) { warn(`productImages[${i}] > ${maxImageSizeMB}MB (${approxMB.toFixed(2)} MB)`); continue; }
 
         // Normalizamos a jpeg para coherencia
         const buf = await normalizeToJpegBuffer(parsed.base64);
         totalMB += buf.length / 1024 / 1024;
-        if (totalMB > maxTotalSizeMB) { warn(⁠ Total imágenes > ${maxTotalSizeMB}MB. Se omite productImages[${i}] ⁠); totalMB -= buf.length / 1024 / 1024; continue; }
+        if (totalMB > maxTotalSizeMB) { warn(`Total imágenes > ${maxTotalSizeMB}MB. Se omite productImages[${i}]`); totalMB -= buf.length / 1024 / 1024; continue; }
 
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: buf.toString('base64') } });
-        log(⁠ + producto[${i}] OK (${(buf.length/1024).toFixed(2)} KB) ⁠);
+        log(`+ producto[${i}] OK (${(buf.length/1024).toFixed(2)} KB)`);
       } catch (imgErr) {
-        err(⁠ Error procesando productImages[${i}]: ⁠, imgErr.message);
+        err(`Error procesando productImages[${i}]:`, imgErr.message);
       }
     }
 
-    log(⁠ Parts a enviar: ${parts.length} | total aprox MB: ${totalMB.toFixed(2)} | orientation=${selectedOrientation} | size=${size || 'M'} ⁠);
-    log(⁠ Parts breakdown: prompt=${parts[0]?.text ? 'SÍ' : 'NO'} | userImage=${parts[1]?.inlineData ? 'SÍ' : 'NO'} | productImages=${parts.length - 2} imágenes ⁠);
+    log(`Parts a enviar: ${parts.length} | total aprox MB: ${totalMB.toFixed(2)} | orientation=${selectedOrientation} | size=${size || 'M'}`);
+    log(`Parts breakdown: prompt=${parts[0]?.text ? 'SÍ' : 'NO'} | userImage=${parts[1]?.inlineData ? 'SÍ' : 'NO'} | productImages=${parts.length - 2} imágenes`);
 
     // Init modelo
     const genAI = new GoogleGenerativeAI(API_KEY);
@@ -324,7 +324,7 @@ export default async function handler(req, res) {
       result = await model.generateContent({ contents: [{ role: 'user', parts }] });
       response = await result.response;
       const requestDuration = Date.now() - requestStartTime;
-      log(⁠ ✅ Respuesta recibida de Google AI en ${requestDuration}ms ⁠);
+      log(`✅ Respuesta recibida de Google AI en ${requestDuration}ms`);
       
       if (!response) throw new Error('Sin respuesta de Gemini');
       
@@ -339,9 +339,9 @@ export default async function handler(req, res) {
       // Verificar si hay bloqueos de seguridad o errores
       if (response.candidates?.[0]?.finishReason) {
         const finishReason = response.candidates[0].finishReason;
-        log(⁠ Finish reason: ${finishReason} ⁠);
+        log(`Finish reason: ${finishReason}`);
         if (finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS') {
-          warn(⁠ ⚠️ Finish reason inesperado: ${finishReason} ⁠);
+          warn(`⚠️ Finish reason inesperado: ${finishReason}`);
           if (finishReason === 'SAFETY') {
             throw new Error('Contenido bloqueado por filtros de seguridad de Google AI');
           }
@@ -355,8 +355,8 @@ export default async function handler(req, res) {
       if (response.promptFeedback) {
         log('Prompt feedback:', response.promptFeedback);
         if (response.promptFeedback.blockReason) {
-          warn(⁠ ⚠️ Prompt bloqueado: ${response.promptFeedback.blockReason} ⁠);
-          throw new Error(⁠ Prompt bloqueado por Google AI: ${response.promptFeedback.blockReason} ⁠);
+          warn(`⚠️ Prompt bloqueado: ${response.promptFeedback.blockReason}`);
+          throw new Error(`Prompt bloqueado por Google AI: ${response.promptFeedback.blockReason}`);
         }
       }
     } catch (aiError) {
@@ -413,7 +413,7 @@ export default async function handler(req, res) {
     return res.json({
       success: true,
       description: 'Imagen generada exitosamente con IA',
-      generatedImage: ⁠ data:image/jpeg;base64,${imageBase64} ⁠,
+      generatedImage: `data:image/jpeg;base64,${imageBase64}`,
       size: size || 'M',
       orientation: selectedOrientation,
       timestamp: new Date().toISOString(),

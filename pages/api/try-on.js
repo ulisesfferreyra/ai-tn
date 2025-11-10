@@ -57,40 +57,88 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
   return `
-ROL Y TAREA:
-Eres una API de generación de imágenes experta en moda y fotografía profesional.
-Tu tarea es producir una imagen fotorrealista de la más alta precisión, donde el usuario esté vistiendo la prenda proporcionada, aplicando el diseño frontal o trasero de la prenda EXCLUSIVAMENTE según la orientación corporal del usuario, sin margen de error.
-Siempre primero analiza todas las fotos, tomate al menos 10 segundos para analizarlas, despues elegi la foto mas apropiada para aplicar basada en la posicion del usuario en la foto.
-⸻
-🔍 ANÁLISIS DE IMÁGENES DE REFERENCIA (PROTOCOLO DE IDENTIFICACIÓN OBLIGATORIO)
-Se te proporcionará una imagen del usuario y una o más imágenes de referencia de la prenda.
-Si hay SOLO 1 FOTO de la prenda:
-Prioridad: Asume que esta imagen representa la vista FRONTAL de la prenda, a menos que elementos inequívocos (ej. una etiqueta en la nuca, un gráfico claramente posterior) demuestren lo contrario.
-Modo Seguro: Si la orientación del usuario requiere la vista TRASERA y solo tienes una foto de la prenda (asumida frontal) que no muestra la espalda, DEBES ABSTENERTE DE GENERAR y notificar la insuficiencia de datos.
-Si hay MÚLTIPLES FOTOS (2 o más) de la prenda:
-PROTOCOLO DE CLASIFICACIÓN RIGUROSO: Debes analizar CADA imagen para clasificarla como FRONTAL (🟦) o TRASERA (🟥), sin ambigüedad.
-CRITERIOS FRONTAL (🟦): Claramente visible el frente de un modelo, botones/cierres frontales, escote delantero, cuello visible, bolsillos de pecho, logos/gráficos diseñados explícitamente para el pecho/abdomen.
-CRITERIOS TRASERA (🟥): Claramente visible la nuca/espalda de un modelo, costuras de hombros/espalda, etiquetas de marca/talla en la nuca, gráficos/estampados diseñados explícitamente para la espalda.
-EXTRACCIÓN DE DISEÑO: Identifica y guarda en memoria de trabajo los detalles exactos de los gráficos, estampados y características únicas de CADA LADO (frontal y trasero).
-⸻
-🧭 ORIENTACIÓN Y APLICACIÓN DE DISEÑO (LA REGLA INQUEBRANTABLE - PROTOCOLO DE CONFORMIDAD ABSOLUTA)
-APLICACIÓN ESTRICTA DEL DISEÑO SEGÚN LA ORIENTACIÓN DEL USUARIO:
-USUARIO DE FRENTE: Debes aplicar única y exclusivamente el diseño, gráficos y detalles identificados como FRONTAL (🟦) de la prenda. No uses ninguna parte del diseño trasero.
-USUARIO DE ESPALDAS: Debes aplicar única y exclusivamente el diseño, gráficos y detalles identificados como TRASERA (🟥) de la prenda. No uses ninguna parte del diseño frontal.
-PROTOCOLO DE VALIDACIÓN Y FALLA (CRÍTICO):
-AUTO-VERIFICACIÓN OBLIGATORIA: Antes de generar cualquier imagen, realiza una auto-verificación exhaustiva para confirmar que el diseño que estás a punto de aplicar a la prenda coincide PERFECTAMENTE con la orientación del usuario y con la imagen de referencia correspondiente (frontal si el usuario está de frente, trasera si el usuario está de espaldas).
-CONDICIÓN DE FALLA - MODO SEGURO:
-Si el usuario está de frente y NO se ha identificado una imagen de referencia CLARA y UNÍVOCA del lado FRONTAL de la prenda (o si es ambigua).
-Si el usuario está de espaldas y NO se ha identificado una imagen de referencia CLARA y UNÍVOCA del lado TRASERO de la prenda (o si es ambigua).
-Si existe la MÁS MÍNIMA DUDA sobre qué lado aplicar o si al aplicar un lado se corre el riesgo de mostrar el diseño incorrecto.
-EN CUALQUIERA DE ESTOS CASOS, DEBES ABSTENERTE POR COMPLETO DE GENERAR CUALQUIER IMAGEN. Tu respuesta debe ser un mensaje indicando que no se pudo generar debido a la ambigüedad o falta de referencia clara para el lado requerido de la prenda.
-⸻
-✨ AJUSTE Y REALISMO (RENDERIZACIÓN FOTORREALISTA)
-Talle seleccionado: ${size}
-Ajusta el tamaño y la caída de la prenda para que coincidan con el talle indicado, adaptándose naturalmente al cuerpo del usuario.
-Mantén la pose, la expresión facial y la complexión corporal del usuario idénticas a la imagen original.
-La prenda debe integrarse de forma impecable, con pliegues, sombras, texturas de tela y efectos de iluminación que sean completamente consistentes con el entorno y la iluminación de la foto original del usuario.
-El resultado final debe ser indistinguible de una fotografía profesional real, sin ningún indicio de manipulación artificial.
+IMAGE ROLES AND ORDER:
+- FIRST IMAGE: The person wearing clothes (preserve face, body, pose, and background completely unchanged)
+- REMAINING IMAGES (2+): The store's product garment from different angles
+
+CRITICAL: GARMENT ORIENTATION DETECTION
+Use images showing people/models wearing the garment as PRIMARY reference to identify FRONT vs BACK:
+
+PRIORITY 1 - Images with people/models:
+- Analyze how the person is wearing the garment in product photos
+- The side facing the camera when the model faces forward = FRONT
+- The side facing away when model's back is to camera = BACK
+- Use the model's body orientation as the definitive reference
+
+PRIORITY 2 - If no people in product images, analyze garment structure:
+- Front indicators: Neckline opening, collar, button/zipper placement, typical wear position
+- Garment logic: Where tags are usually placed (back neck), how it naturally drapes
+- DO NOT rely on design size/complexity - large designs can be on front OR back
+
+PRIORITY 3 - If orientation remains unclear:
+- Default to the first image showing the most typical wearing position
+- Request clarification if confidence is low
+
+IMPORTANT: Design prominence (logos, graphics, text) is NOT a reliable indicator of front vs back. Always prioritize human-worn reference images.
+
+GARMENT REPLICATION REQUIREMENTS:
+1. GARMENT TYPE: Identify and replicate the exact type from the product images
+   - Basic t-shirt → basic t-shirt (no collar, no buttons)
+   - Polo shirt → polo shirt (with collar and buttons)
+   - Hoodie → hoodie
+   - Dress → dress
+   - Any other garment → replicate that specific type
+
+2. EXACT VISUAL MATCH (from identified FRONT view):
+   - Pattern & Design: Copy ALL patterns, stripes, prints, logos, graphics exactly as shown on FRONT
+   - Colors: Match EXACT colors, shades, tones, and color combinations
+   - Fabric Texture: Replicate the material appearance (cotton, denim, silk, knit, etc.)
+   - Structure: Preserve neckline, collar type, sleeve length/style, buttons, zippers, pockets
+   - Details: Include ALL seams, stitching, labels, tags, decorative elements
+
+3. SIZE ADJUSTMENT (${sizeInstruction}):
+   - XS: Very fitted, tight, form-fitting
+   - S: Fitted, slightly snug, close to body
+   - M: Standard fit, comfortable, natural
+   - L: Relaxed fit, slightly loose, comfortable
+   - XL: Oversized, loose-fitting, baggy
+   - XXL: Very oversized, very loose, very baggy
+
+MANDATORY QUALITY CHECKS - OUTPUT MUST MEET ALL:
+✓ Person's original pose is EXACTLY preserved (same body position, same angle, same stance)
+✓ Person's face is COMPLETELY unchanged and clearly recognizable
+✓ Background is IDENTICAL to the original person's photo
+✓ Garment from store's product images is PRESENT and VISIBLE on the person
+✓ Garment orientation is CORRECT (front view matching how models wear it in product photos)
+✓ Garment design matches EXACTLY (all patterns, logos, colors replicated from correct side)
+✓ Lighting and shadows are natural and consistent
+✓ No distortions, artifacts, or unrealistic elements
+✓ Image appears photorealistic and professionally composed
+
+CRITICAL RULES:
+✓ DO:
+- Prioritize images showing people/models wearing the garment to determine front/back orientation
+- Use ONLY the garment from the product images (not from person's photo)
+- Replace the person's original clothing completely with the correct FRONT view
+- Maintain the garment's exact design, style, and all details
+- Adjust fit naturally according to the specified size: ${size}
+- Ensure realistic lighting, shadows, fabric drape, and natural wrinkles
+- Preserve person's EXACT original pose, face, and background
+
+✗ DO NOT:
+- Assume design complexity indicates front vs back
+- Rely solely on logo/graphic placement to determine orientation
+- Use the back view as the primary garment view
+- Use or reference the clothing from the person's original photo
+- Create a different garment or modify the design
+- Change the person's pose, facial features, or background
+- Add patterns, colors, or details not in the product images
+- Remove patterns, colors, or details that ARE in the product images
+- Generate output if any quality check fails
+
+IF ANY QUALITY CHECK FAILS: Do not generate output. Return error code with specific failure reason.
+
+OUTPUT: A single photorealistic image showing the person wearing the IDENTICAL garment (correctly oriented FRONT view) from the store's product images in the specified size, with EXACT preservation of the person's original pose, face, and background. No text, watermarks, or additional elements.
 `.trim();
 }
 

@@ -53,93 +53,32 @@ async function normalizeToJpegBuffer(base64) {
 // PROMPT (NO TOCAR)
 // =======================
 function buildPrompt({ productImagesCount, productImagesText, userOrientation, size }) {
-  const orientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
+  const orientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
+  const orientationText = orientation === 'front' ? 'FRENTE' : 'ESPALDA';
 
-  return `
-IMAGE ROLES AND ORDER:
-•⁠  ⁠FIRST IMAGE: The person wearing clothes (preserve face, body, pose, and background completely unchanged)
-•⁠  ⁠REMAINING IMAGES (2+): The store's product garment from different angles
+  // Prompt simplificado como el código React que funcionaba
+  // Confía en que la IA interprete naturalmente las imágenes
+  return `VESTIR AL USUARIO CON LA PRENDA EXACTA DE LAS IMÁGENES DEL PRODUCTO.
 
-CRITICAL: GARMENT ORIENTATION DETECTION
-Use images showing people/models wearing the garment as PRIMARY reference to identify FRONT vs BACK:
+IMPORTANTE: Después de mi mensaje, recibirás:
+1. La foto del usuario (persona) - IMAGEN #1
+   - El usuario está de ${orientationText.toLowerCase()} (${orientationText})
+2. ${productImagesCount} imagen${productImagesCount !== 1 ? 'es' : ''} de la prenda de ropa del producto - IMÁGENES #2 a #${productImagesCount + 1}
 
-PRIORITY 1 - Images with people/models:
-•⁠  ⁠Analyze how the person is wearing the garment in product photos
-•⁠  ⁠The side facing the camera when the model faces forward = FRONT
-•⁠  ⁠The side facing away when model's back is to camera = BACK
-•⁠  ⁠Use the model's body orientation as the definitive reference
+TU TAREA:
+- Reemplaza SOLO la ropa del usuario con la prenda de las imágenes del producto
+- Mantén TODO lo demás igual: cuerpo, cara, pose, expresión, fondo, iluminación
+- Usa EXACTAMENTE el diseño, colores, estampados y gráficos de las imágenes del producto
+- Analiza todas las imágenes del producto para entender el diseño completo
+- El usuario está de ${orientationText.toLowerCase()}, así que usa las imágenes del producto que muestran la ${orientationText.toLowerCase()} de la prenda
+- Replica el tipo de calce (oversized, slim fit, regular fit) que veas en las imágenes del producto
+- NO inventes prendas nuevas
+- NO cambies el diseño
+- NO cambies la pose del usuario
+- Talle: ${size || 'M'}
 
-PRIORITY 2 - If no people in product images, analyze garment structure:
-•⁠  ⁠Front indicators: Neckline opening, collar, button/zipper placement, typical wear position
-•⁠  ⁠Garment logic: Where tags are usually placed (back neck), how it naturally drapes
-•⁠  ⁠DO NOT rely on design size/complexity - large designs can be on front OR back
-
-PRIORITY 3 - If orientation remains unclear:
-•⁠  ⁠Default to the first image showing the most typical wearing position
-•⁠  ⁠Request clarification if confidence is low
-
-IMPORTANT: Design prominence (logos, graphics, text) is NOT a reliable indicator of front vs back. Always prioritize human-worn reference images.
-
-GARMENT REPLICATION REQUIREMENTS:
-1.⁠ ⁠GARMENT TYPE: Identify and replicate the exact type from the product images
-   - Basic t-shirt → basic t-shirt (no collar, no buttons)
-   - Polo shirt → polo shirt (with collar and buttons)
-   - Hoodie → hoodie
-   - Dress → dress
-   - Any other garment → replicate that specific type
-
-2.⁠ ⁠EXACT VISUAL MATCH (from identified FRONT view):
-   - Pattern & Design: Copy ALL patterns, stripes, prints, logos, graphics exactly as shown on FRONT
-   - Colors: Match EXACT colors, shades, tones, and color combinations
-   - Fabric Texture: Replicate the material appearance (cotton, denim, silk, knit, etc.)
-   - Structure: Preserve neckline, collar type, sleeve length/style, buttons, zippers, pockets
-   - Details: Include ALL seams, stitching, labels, tags, decorative elements
-
-3.⁠ ⁠SIZE ADJUSTMENT (${sizeInstruction}):
-   - XS: Very fitted, tight, form-fitting
-   - S: Fitted, slightly snug, close to body
-   - M: Standard fit, comfortable, natural
-   - L: Relaxed fit, slightly loose, comfortable
-   - XL: Oversized, loose-fitting, baggy
-   - XXL: Very oversized, very loose, very baggy
-
-MANDATORY QUALITY CHECKS - OUTPUT MUST MEET ALL:
-✓ Person's original pose is EXACTLY preserved (same body position, same angle, same stance)
-✓ Person's face is COMPLETELY unchanged and clearly recognizable
-✓ Background is IDENTICAL to the original person's photo
-✓ Garment from store's product images is PRESENT and VISIBLE on the person
-✓ Garment orientation is CORRECT (front view matching how models wear it in product photos)
-✓ Garment design matches EXACTLY (all patterns, logos, colors replicated from correct side)
-✓ Lighting and shadows are natural and consistent
-✓ No distortions, artifacts, or unrealistic elements
-✓ Image appears photorealistic and professionally composed
-
-CRITICAL RULES:
-✓ DO:
-•⁠  ⁠Prioritize images showing people/models wearing the garment to determine front/back orientation
-•⁠  ⁠Use ONLY the garment from the product images (not from person's photo)
-•⁠  ⁠Replace the person's original clothing completely with the correct FRONT view
-•⁠  ⁠Maintain the garment's exact design, style, and all details
-•⁠  ⁠Adjust fit naturally according to the specified size: ${size}
-•⁠  ⁠Ensure realistic lighting, shadows, fabric drape, and natural wrinkles
-•⁠  ⁠Preserve person's EXACT original pose, face, and background
-
-✗ DO NOT:
-•⁠  ⁠Assume design complexity indicates front vs back
-•⁠  ⁠Rely solely on logo/graphic placement to determine orientation
-•⁠  ⁠Use the back view as the primary garment view
-•⁠  ⁠Use or reference the clothing from the person's original photo
-•⁠  ⁠Create a different garment or modify the design
-•⁠  ⁠Change the person's pose, facial features, or background
-•⁠  ⁠Add patterns, colors, or details not in the product images
-•⁠  ⁠Remove patterns, colors, or details that ARE in the product images
-•⁠  ⁠Generate output if any quality check fails
-
-IF ANY QUALITY CHECK FAILS: Do not generate output. Return error code with specific failure reason.
-
-OUTPUT: A single photorealistic image showing the person wearing the IDENTICAL garment (correctly oriented FRONT view) from the store's product images in the specified size, with EXACT preservation of the person's original pose, face, and background. No text, watermarks, or additional elements.
-`.trim();
+RESULTADO: El usuario usando EXACTAMENTE la prenda de las imágenes del producto, nada más.`.trim();
 }
 
 function safePickGeneratedImage(resp) {
@@ -152,14 +91,14 @@ function safePickGeneratedImage(resp) {
       if (content) {
         const parts = content.parts || content?.parts || [];
         for (const p of parts) {
-          // Buscar inlineData (formato nuevo)
-          if (p?.inlineData?.data && typeof p.inlineData.data === 'string' && p.inlineData.data.length > 100) {
-            log('✅ Imagen encontrada en candidates[0].content.parts[].inlineData.data');
+          // Buscar inlineData (formato nuevo) - aumentar mínimo a 5000 caracteres
+          if (p?.inlineData?.data && typeof p.inlineData.data === 'string' && p.inlineData.data.length > 5000) {
+            log(`✅ Imagen encontrada en candidates[0].content.parts[].inlineData.data (${p.inlineData.data.length} chars)`);
             return p.inlineData.data;
           }
-          // Buscar inline_data (formato alternativo)
-          if (p?.inline_data?.data && typeof p.inline_data.data === 'string' && p.inline_data.data.length > 100) {
-            log('✅ Imagen encontrada en candidates[0].content.parts[].inline_data.data');
+          // Buscar inline_data (formato alternativo) - aumentar mínimo a 5000 caracteres
+          if (p?.inline_data?.data && typeof p.inline_data.data === 'string' && p.inline_data.data.length > 5000) {
+            log(`✅ Imagen encontrada en candidates[0].content.parts[].inline_data.data (${p.inline_data.data.length} chars)`);
             return p.inline_data.data;
           }
         }
@@ -171,12 +110,12 @@ function safePickGeneratedImage(resp) {
   
   // Estrategia 2: Buscar en output[0].inlineData
   try {
-    if (resp?.output?.[0]?.inlineData?.data && typeof resp.output[0].inlineData.data === 'string' && resp.output[0].inlineData.data.length > 100) {
-      log('✅ Imagen encontrada en output[0].inlineData.data');
+    if (resp?.output?.[0]?.inlineData?.data && typeof resp.output[0].inlineData.data === 'string' && resp.output[0].inlineData.data.length > 5000) {
+      log(`✅ Imagen encontrada en output[0].inlineData.data (${resp.output[0].inlineData.data.length} chars)`);
       return resp.output[0].inlineData.data;
     }
-    if (resp?.output?.[0]?.inline_data?.data && typeof resp.output[0].inline_data.data === 'string' && resp.output[0].inline_data.data.length > 100) {
-      log('✅ Imagen encontrada en output[0].inline_data.data');
+    if (resp?.output?.[0]?.inline_data?.data && typeof resp.output[0].inline_data.data === 'string' && resp.output[0].inline_data.data.length > 5000) {
+      log(`✅ Imagen encontrada en output[0].inline_data.data (${resp.output[0].inline_data.data.length} chars)`);
       return resp.output[0].inline_data.data;
     }
   } catch (e) {
@@ -192,12 +131,12 @@ function safePickGeneratedImage(resp) {
         if (content) {
           const parts = content.parts || [];
           for (const p of parts) {
-            if (p?.inlineData?.data && typeof p.inlineData.data === 'string' && p.inlineData.data.length > 100) {
-              log(`✅ Imagen encontrada en candidates[${i}].content.parts[].inlineData.data`);
+            if (p?.inlineData?.data && typeof p.inlineData.data === 'string' && p.inlineData.data.length > 5000) {
+              log(`✅ Imagen encontrada en candidates[${i}].content.parts[].inlineData.data (${p.inlineData.data.length} chars)`);
               return p.inlineData.data;
             }
-            if (p?.inline_data?.data && typeof p.inline_data.data === 'string' && p.inline_data.data.length > 100) {
-              log(`✅ Imagen encontrada en candidates[${i}].content.parts[].inline_data.data`);
+            if (p?.inline_data?.data && typeof p.inline_data.data === 'string' && p.inline_data.data.length > 5000) {
+              log(`✅ Imagen encontrada en candidates[${i}].content.parts[].inline_data.data (${p.inline_data.data.length} chars)`);
               return p.inline_data.data;
             }
           }
@@ -370,7 +309,10 @@ export default async function handler(req, res) {
 
     // Extraer imagen generada
     const imageBase64 = safePickGeneratedImage(response);
-    if (!imageBase64 || typeof imageBase64 !== 'string' || imageBase64.length < 100) {
+    const userImageBase64 = parsedUser.base64;
+    
+    // Validación mejorada: verificar que la imagen sea válida y diferente
+    if (!imageBase64 || typeof imageBase64 !== 'string' || imageBase64.length < 5000) {
       // Log detallado de la respuesta para diagnóstico
       log('⚠️ No se pudo extraer imagen de la respuesta de Google AI');
       log('Response structure:', {
@@ -409,7 +351,28 @@ export default async function handler(req, res) {
       throw new Error('No se pudo extraer la imagen generada (imageData vacío o inválido). La IA puede haber retornado texto en lugar de una imagen.');
     }
 
+    // Validación mejorada: verificar que la imagen generada sea diferente de la original
+    // Comparar longitud, primeros y últimos caracteres para detectar si es la misma imagen
+    const lengthDiff = Math.abs(imageBase64.length - userImageBase64.length);
+    const firstCharsMatch = imageBase64.substring(0, 200) === userImageBase64.substring(0, 200);
+    const lastCharsMatch = imageBase64.substring(imageBase64.length - 200) === userImageBase64.substring(userImageBase64.length - 200);
+    const isSameAsOriginal = lengthDiff < 500 && firstCharsMatch && lastCharsMatch;
+    
+    if (isSameAsOriginal) {
+      warn('⚠️ La imagen generada parece ser idéntica a la original del usuario');
+      warn(`   Tamaño original: ${userImageBase64.length} caracteres`);
+      warn(`   Tamaño generada: ${imageBase64.length} caracteres`);
+      warn(`   Diferencia de longitud: ${lengthDiff} caracteres`);
+      warn(`   Primeros 200 chars coinciden: ${firstCharsMatch}`);
+      warn(`   Últimos 200 chars coinciden: ${lastCharsMatch}`);
+      throw new Error('La IA retornó la imagen original del usuario en lugar de generar una nueva imagen con la prenda aplicada');
+    }
+    
     log('Imagen generada OK');
+    log(`   Tamaño original: ${userImageBase64.length} caracteres`);
+    log(`   Tamaño generada: ${imageBase64.length} caracteres`);
+    log(`   Diferencia: ${Math.abs(imageBase64.length - userImageBase64.length)} caracteres`);
+    
     return res.json({
       success: true,
       description: 'Imagen generada exitosamente con IA',
@@ -429,6 +392,19 @@ export default async function handler(req, res) {
     let errorType = 'UNKNOWN';
     let errorDescription = error.message || 'Error desconocido';
     const msg = (errorDescription || '').toUpperCase();
+    
+    // Log detallado del error para diagnóstico
+    log('========== ERROR DETECTADO ==========');
+    log('Error message:', error.message);
+    log('Error stack:', error.stack);
+    log('Request info:', {
+      hasUserImage: hasUser,
+      userImageLength: userLen,
+      productImagesCount: prodCount,
+      hasProductImage: !!body.productImage,
+      size: body.size,
+      userOrientation: body.userOrientation
+    });
 
     if (msg.includes('GOOGLE AI')) errorType = 'GOOGLE_AI_ERROR';
     if (msg.includes('IMAGEN') || msg.includes('IMAGE')) errorType = 'IMAGE_PROCESSING_ERROR';
@@ -453,7 +429,8 @@ export default async function handler(req, res) {
           errorDetails: errorDescription,
         });
       }
-      return res.json({
+      // Respuesta de fallback con información detallada
+      const fallbackResponse = {
         success: true,
         description: 'Imagen procesada (modo fallback)',
         originalImage: body.userImage,
@@ -465,7 +442,22 @@ export default async function handler(req, res) {
         errorType,
         errorReason: errorDescription,
         timestamp: new Date().toISOString(),
-      });
+        // Información adicional para diagnóstico
+        diagnostic: {
+          userImageReceived: hasUser,
+          userImageSize: userLen,
+          productImagesCount: prodCount,
+          errorMessage: error.message,
+          errorType: errorType
+        }
+      };
+      
+      warn('⚠️ Modo fallback activado - retornando imagen original del usuario');
+      warn(`   Error: ${errorType} - ${errorDescription}`);
+      warn(`   User image: ${hasUser ? 'SÍ' : 'NO'} (${userLen} chars)`);
+      warn(`   Product images: ${prodCount}`);
+      
+      return res.json(fallbackResponse);
     } catch (fallbackErr) {
       err('Fallback error:', fallbackErr.message);
       return res.status(500).json({
@@ -478,4 +470,3 @@ export default async function handler(req, res) {
     }
   }
 }
-

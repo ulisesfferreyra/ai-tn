@@ -60,32 +60,35 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
 DRESS THE USER WITH THE EXACT GARMENT FROM THE PRODUCT IMAGES.
 
 IMPORTANT: After this message, you will receive:
-1.⁠ ⁠The user's photo (person)
-2.⁠ ⁠X product garment image(s) from different angles
+1.⁠ ⁠The user's photo (person to dress)
+2.⁠ ⁠X product garment image(s)
 
-FRONT vs BACK DETECTION:
-•⁠  ⁠If product images show a person/model wearing the garment: Use their body orientation as reference (front = facing camera, back = facing away)
-•⁠  ⁠If no person in product images: Analyze garment structure (neckline, collar, typical wear position)
-•⁠  ⁠DO NOT assume large designs = front. Designs can be on front OR back.
+CRITICAL - FRONT DETECTION RULE:
+Step 1: FIRST, look for images showing a PERSON/MODEL wearing the garment
+Step 2: If found → Use EXACTLY how that person is wearing it (what's visible on their chest = FRONT)
+Step 3: If NO person in images → Analyze garment structure (neckline opening, collar placement)
+Step 4: Apply the FRONT design to the user's chest (visible side when facing camera)
+
+NEVER mix front and back designs. The side shown on the model's chest MUST appear on the user's chest.
 
 YOUR TASK:
-•⁠  ⁠Replace ONLY the user's clothing with the garment from the product images
+•⁠  ⁠Replace ONLY the user's clothing with the garment from product images
 •⁠  ⁠Keep EVERYTHING else identical: body, face, pose, expression, background
-•⁠  ⁠Use EXACTLY the design, colors, patterns, and graphics from the product images (correct front orientation)
-•⁠  ⁠DO NOT invent new garments
-•⁠  ⁠DO NOT change the design
+•⁠  ⁠Copy the EXACT design visible on the model's CHEST to the user's CHEST
+•⁠  ⁠Match colors, patterns, graphics, and text precisely
+•⁠  ⁠DO NOT invent or modify designs
 •⁠  ⁠Size: ${size}
 
-QUALITY REQUIREMENTS - If ANY fails, DO NOT generate output:
-✓ User's pose is EXACTLY preserved
-✓ User's face is unchanged and recognizable
-✓ Background is identical
-✓ Product garment is present and visible
-✓ Garment orientation is correct (front-facing)
-✓ Design matches exactly
-✓ Image looks photorealistic
+VALIDATION - If ANY fails, DO NOT generate:
+✓ User's pose unchanged
+✓ User's face unchanged
+✓ Background unchanged
+✓ Product garment present
+✓ Correct side of garment shown (chest design matches model's chest design)
+✓ Design accuracy 100%
+✓ Photorealistic quality
 
-RESULT: The user wearing EXACTLY the garment from the product images, nothing more.
+RESULT: User wearing the EXACT garment as shown on the model in product images.
 `.trim();
 }
 

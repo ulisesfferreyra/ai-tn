@@ -57,37 +57,15 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
   return `
-DVESTIR AL USUARIO CON LA PRENDA EXACTA DE LAS IMÁGENES DEL PRODUCTO.
+[Image 1] is the base. It shows the user in natural pose, facing ${orientationText.toLowerCase()}. Keep their full likeness, expression, hair, skin tone, body shape, lighting, perspective, and environment exactly the same.
 
-IMPORTANTE: Después de mi mensaje, recibirás:
-1. La foto del usuario (persona) - IMAGEN #1
-   - El usuario está de ${orientationText.toLowerCase()} (${orientationText})
-2. ${productImagesCount} imagen${productImagesCount !== 1 ? 'es' : ''} de la prenda de ropa del producto - IMÁGENES #2 a #${productImagesCount + 1}
+[Images 2–${productImagesCount + 1}] are reference photos of the clothing product. Analyze all of them first to identify which image shows the ${orientationText.toLowerCase()} of the garment — the side that matches the user’s facing direction. Use only that product image as the clothing reference.
 
-PROCEDIMIENTO OBLIGATORIO (HAZ ESTO PRIMERO):
-1. ANALIZA TODAS las imágenes del producto (IMÁGENES #2 a #${productImagesCount + 1}) ANTES de hacer cualquier cosa
-2. IDENTIFICA cuál imagen muestra el FRENTE de la prenda:
-   - El FRENTE generalmente tiene: diseños grandes en el pecho, logos prominentes, texto grande, gráficos complejos en el centro o parte superior del pecho
-   - Si la prenda está plana, el FRENTE es la parte que muestra el diseño principal más grande y visible
-3. IDENTIFICA cuál imagen muestra la ESPALDA de la prenda:
-   - La ESPALDA generalmente tiene: diseños más pequeños en la parte superior (cerca del cuello), logos pequeños, texto reducido, o puede estar más vacía
-   - Si la prenda está plana, la ESPALDA es la parte con menos diseño o diseño más pequeño
-4. MATCH: El usuario está de ${orientationText.toLowerCase()}, así que DEBES usar la imagen del producto que muestra la ${orientationText.toLowerCase()} de la prenda
-   - Si el usuario está de FRENTE → usa la imagen del producto que muestra el FRENTE de la prenda
-   - Si el usuario está de ESPALDA → usa la imagen del producto que muestra la ESPALDA de la prenda
+Replace only the user’s current outfit with the exact garment from the correct product image, preserving every visible detail: fabric texture, color, graphics, stitching, logo placement, and fit style (oversized / slim / regular as shown). Do not invent or modify the design. Maintain natural cloth deformation and shading consistent with the body and light of Image 1.
 
-TU TAREA:
-- Reemplaza SOLO la ropa del usuario con la prenda de la imagen del producto CORRECTA (la que coincide con la orientación del usuario)
-- Mantén TODO lo demás igual: cuerpo, cara, pose, expresión, fondo, iluminación
-- Usa EXACTAMENTE el diseño, colores, estampados y gráficos de la imagen del producto CORRECTA
-- Replica el tipo de calce (oversized, slim fit, regular fit) que veas en las imágenes del producto
-- NO inventes prendas nuevas
-- NO cambies el diseño
-- NO cambies la pose del usuario
-- NO uses la imagen incorrecta (si el usuario está de frente, NO uses la imagen de la espalda)
-- Talle: ${size || 'M'}
+Match color temperature, exposure, and shadow direction precisely to Image 1. Keep the background, body posture, and camera framing unaltered.
 
-RESULTADO: El usuario usando EXACTAMENTE la prenda de la imagen del producto que corresponde a su orientación (${orientationText.toLowerCase()}), nada más.
+Output one high-resolution, photorealistic image of the user wearing that exact garment, same orientation and aspect ratio as Image 1, size ${size || ‘M’}. No extra props, text, or visual effects.
 `.trim();
 }
 

@@ -57,15 +57,82 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
   return `
-[Image 1] is the base. It shows the user in natural pose, facing ${orientation.toLowerCase()}. Keep their full likeness, expression, hair, skin tone, body shape, lighting, perspective, and environment exactly the same.
+DRESS THE USER WITH THE EXACT GARMENT FROM THE PRODUCT IMAGES.
 
-[Images 2–${productImagesCount + 1}] are reference photos of the clothing product. Analyze all of them first to identify which image shows the ${orientationText.toLowerCase()} of the garment — the side that matches the user's facing direction. Use only that product image as the clothing reference.
+You will receive multiple images. These images can be in ANY order and ANY combination:
+•⁠  ⁠One image will be the USER (person to dress)
+•⁠  ⁠The rest are PRODUCT images, which may include:
+  • Only garment photos (no people)
+  • Only model photos (people wearing the garment)
+  • A mix of both garment-only and model photos
 
-Replace only the user's current outfit with the exact garment from the correct product image, preserving every visible detail: fabric texture, color, graphics, stitching, logo placement, and fit style (oversized / slim / regular as shown). Do not invent or modify the design. Maintain natural cloth deformation and shading consistent with the body and light of Image 1.
+CRITICAL ANALYSIS PROCESS - FOLLOW EXACTLY:
 
-Match color temperature, exposure, and shadow direction precisely to Image 1. Keep the background, body posture, and camera framing unaltered.
+Step 1: IDENTIFY which image is the USER vs PRODUCT images
+•⁠  ⁠The user photo shows a person in casual/natural setting
+•⁠  ⁠Product photos show the garment (with or without models) in professional/studio setting
 
-Output one high-resolution, photorealistic image of the user wearing that exact garment, same orientation and aspect ratio as Image 1, size ${size || 'M'}. No extra props, text, or visual effects.`.trim();
+Step 2: ANALYZE ALL PRODUCT IMAGES TOGETHER (not one by one)
+•⁠  ⁠Your goal: Determine which side of the garment is the FRONT
+
+Step 3: PRIORITIZE images with HUMANS/MODELS wearing the garment
+•⁠  ⁠If ANY product image shows a person wearing the garment → Use that as PRIMARY reference
+•⁠  ⁠The design visible on the model's CHEST = FRONT orientation
+•⁠  ⁠This is your DEFINITIVE answer
+
+Step 4: If NO models in product images (only garment photos):
+•⁠  ⁠Analyze garment structure: neckline opening, collar, tag location
+•⁠  ⁠Cross-reference ALL angles to identify front vs back
+
+Step 5: CONCLUDE which view is FRONT
+•⁠  ⁠Use ONLY that front orientation to dress the user
+•⁠  ⁠Apply that design to user's chest
+
+EXAMPLE SCENARIOS:
+
+Scenario A: 5 images total
+•⁠  ⁠Image 1: User photo
+•⁠  ⁠Images 2-4: Garment only (different angles)
+•⁠  ⁠Image 5: Model wearing garment
+→ Prioritize image 5 (model) to identify front
+
+Scenario B: 3 images total
+•⁠  ⁠Image 1: Garment front view
+•⁠  ⁠Image 2: User photo
+•⁠  ⁠Image 3: Garment back view
+→ Analyze garment structure to identify front
+
+Scenario C: 4 images total
+•⁠  ⁠Images 1-3: Models wearing garment
+•⁠  ⁠Image 4: User photo
+→ Use any model image to identify front
+
+YOUR TASK:
+•⁠  ⁠Replace ONLY user's clothing with the garment (using identified FRONT orientation)
+•⁠  ⁠Keep EVERYTHING else identical: face, body, pose, expression, background
+•⁠  ⁠Apply FRONT design to user's chest (same as model's chest if available)
+•⁠  ⁠Match colors, patterns, graphics, text with 100% accuracy
+•⁠  ⁠Size: ${size}
+
+MANDATORY GUARDRAILS - NO EXCEPTIONS:
+
+Before generating output, verify ALL conditions:
+
+✓ ORIENTATION: Front correctly identified and applied (not reversed)
+✓ DESIGN ACCURACY: 100% match to product (colors, patterns, graphics, text)
+✓ GARMENT PRESENCE: Product garment clearly visible on user
+✓ POSE PRESERVATION: User's body position IDENTICAL to input
+✓ FACE PRESERVATION: User's face UNCHANGED and recognizable
+✓ BACKGROUND PRESERVATION: Background IDENTICAL to input
+✓ REALISM: Photorealistic, natural lighting, proper fabric drape
+✓ NO ARTIFACTS: No distortions, glitches, unrealistic elements
+
+IF ANY GUARDRAIL FAILS:
+→ DO NOT GENERATE OUTPUT
+→ RETURN ERROR with failure reason
+→ NEVER generate "close enough" results
+
+RESULT: User wearing the garment with perfect front orientation, zero errors.`.trim();
 }
 
 function safePickGeneratedImage(resp) {

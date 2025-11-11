@@ -57,16 +57,15 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
   return `
-[Image 1] is the base. It shows the user in natural pose, facing ${orientationText.toLowerCase()}. Keep their full likeness, expression, hair, skin tone, body shape, lighting, perspective, and environment exactly the same.
+[Image 1] is the base. It shows the user in natural pose, facing ${orientation.toLowerCase()}. Keep their full likeness, expression, hair, skin tone, body shape, lighting, perspective, and environment exactly the same.
 
-[Images 2–${productImagesCount + 1}] are reference photos of the clothing product. Analyze all of them first to identify which image shows the ${orientationText.toLowerCase()} of the garment — the side that matches the user’s facing direction. Use only that product image as the clothing reference.
+[Images 2–${productImagesCount + 1}] are reference photos of the clothing product. Analyze all of them first to identify which image shows the ${orientationText.toLowerCase()} of the garment — the side that matches the user's facing direction. Use only that product image as the clothing reference.
 
-Replace only the user’s current outfit with the exact garment from the correct product image, preserving every visible detail: fabric texture, color, graphics, stitching, logo placement, and fit style (oversized / slim / regular as shown). Do not invent or modify the design. Maintain natural cloth deformation and shading consistent with the body and light of Image 1.
+Replace only the user's current outfit with the exact garment from the correct product image, preserving every visible detail: fabric texture, color, graphics, stitching, logo placement, and fit style (oversized / slim / regular as shown). Do not invent or modify the design. Maintain natural cloth deformation and shading consistent with the body and light of Image 1.
 
 Match color temperature, exposure, and shadow direction precisely to Image 1. Keep the background, body posture, and camera framing unaltered.
 
-Output one high-resolution, photorealistic image of the user wearing that exact garment, same orientation and aspect ratio as Image 1, size ${size || ‘M’}. No extra props, text, or visual effects.
-`.trim();
+Output one high-resolution, photorealistic image of the user wearing that exact garment, same orientation and aspect ratio as Image 1, size ${size || 'M'}. No extra props, text, or visual effects.`.trim();
 }
 
 function safePickGeneratedImage(resp) {

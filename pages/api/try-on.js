@@ -102,13 +102,13 @@ If no collar or neckline is visible (flat back surface, no cutout or buttons):
 
 💡 Neck-first rule:
 "If there is a visible collar or neckline → that is the front.
- If there isn’t → that side represents the back."
+ If there isn't → that side represents the back."
 
 ──────────────────────────────────────────────
 👔 Step 3: Cross-Reference With Product Context
 ──────────────────────────────────────────────
 If the collar check is inconclusive or both sides have collars (e.g., hoodies, jackets):
-1. Prioritize model photos — the design on the model’s chest = FRONT.
+1. Prioritize model photos — the design on the model's chest = FRONT.
 2. If no model photos exist, check:
    - Tag position → back
    - Button placket → front
@@ -128,11 +128,11 @@ After completing neck/collar and structure analysis:
 ──────────────────────────────────────────────
 • Replace ONLY the user's clothing with the product garment (using the identified FRONT).
 • Preserve:
-  - User’s face, pose, and expression
+  - User's face, pose, and expression
   - Background and lighting
 • Apply the garment with correct proportions and natural neck alignment.
 • Match colors, patterns, logos, and text with 100% accuracy.
-• Size: \${size}
+• Size: ${size}
 
 ──────────────────────────────────────────────
 🚨 MANDATORY GUARDRAILS
@@ -153,7 +153,7 @@ Before generating output, verify ALL conditions:
 If ANY guardrail fails:
 → DO NOT generate output
 → RETURN ERROR with detailed failure reason
-→ NEVER produce “close enough” results
+→ NEVER produce "close enough" results
 
 ──────────────────────────────────────────────
 🎯 FINAL GOAL
@@ -261,8 +261,69 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { productImage, productImages, size, userImage, userOrientation } = req.body || {};
+    const { action, productImage, productImages, size, userImage, userOrientation } = req.body || {};
 
+    // Si la acción es 'categorize', solo categorizar la imagen del producto
+    if (action === 'categorize') {
+      if (!productImage) {
+        return res.status(400).json({ success: false, error: 'No se recibió imagen del producto para categorizar' });
+      }
+
+      try {
+        const parsed = parseDataUrl(productImage);
+        if (!parsed) {
+          return res.status(400).json({ success: false, error: 'productImage debe ser una data URL base64 válida' });
+        }
+
+        const processedImage = await normalizeToJpegBuffer(parsed.base64);
+        const genAI = new GoogleGenerativeAI(API_KEY);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-image' });
+
+        // Prompt para categorizar la imagen
+        const categorizePrompt = `Analyze this clothing product image. Determine if it shows the FRONT (front-facing, with buttons, zipper, or main design visible) or BACK (back-facing, showing the back of the garment) of the clothing item.
+
+Respond ONLY with one word: "front" or "back". If you cannot determine, respond with "unknown".`;
+
+        const parts = [
+          { text: categorizePrompt },
+          { inlineData: { mimeType: 'image/jpeg', data: processedImage.toString('base64') } },
+        ];
+
+        log('📤 Enviando solicitud de categorización a Google AI...');
+        const result = await model.generateContent({ contents: [{ role: 'user', parts }] });
+        const response = await result.response;
+        
+        if (!response || !response.candidates?.[0]?.content?.parts?.[0]?.text) {
+          return res.status(500).json({ success: false, error: 'No se pudo obtener respuesta de categorización' });
+        }
+
+        const categoryText = response.candidates[0].content.parts[0].text.trim().toLowerCase();
+        let orientation = 'unknown';
+        
+        if (categoryText.includes('front')) {
+          orientation = 'front';
+        } else if (categoryText.includes('back')) {
+          orientation = 'back';
+        }
+
+        log(`✅ Categorización completada: ${orientation}`);
+
+        return res.json({
+          success: true,
+          orientation,
+          rawResponse: categoryText,
+        });
+      } catch (error) {
+        err('Error categorizando imagen:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Error categorizando imagen',
+          details: error.message,
+        });
+      }
+    }
+
+    // Flujo normal: generar imagen
     if (!userImage) return res.status(400).json({ success: false, error: 'No se recibió imagen del usuario' });
 
     // Unificar imágenes de producto
@@ -475,12 +536,28 @@ export default async function handler(req, res) {
           errorDetails: errorDescription,
         });
       }
+      
+      // Normalizar userImage para evitar prefijos duplicados
+      let normalizedUserImage = body.userImage;
+      if (typeof normalizedUserImage === 'string') {
+        // Detectar si tiene prefijo duplicado
+        const matches = normalizedUserImage.match(/data:image\/[^;]+;base64,/g);
+        if (matches && matches.length > 1) {
+          // Tomar desde el último "data:image/"
+          const lastIndex = normalizedUserImage.lastIndexOf('data:image/');
+          if (lastIndex > 0) {
+            normalizedUserImage = normalizedUserImage.substring(lastIndex);
+            warn('⚠️ Normalizado userImage en fallback (prefijos duplicados detectados)');
+          }
+        }
+      }
+      
       return res.json({
         success: true,
         description: 'Imagen procesada (modo fallback)',
-        originalImage: body.userImage,
-        generatedImage: body.userImage,
-        finalImage: body.userImage,
+        originalImage: normalizedUserImage,
+        generatedImage: normalizedUserImage,
+        finalImage: normalizedUserImage,
         size: body.size || 'M',
         orientation: ALLOWED_ORIENTATIONS.has(body.userOrientation) ? body.userOrientation : 'front',
         fallback: true,

@@ -263,8 +263,15 @@ export default async function handler(req, res) {
   try {
     const { action, productImage, productImages, size, userImage, userOrientation } = req.body || {};
 
+    // Log para debugging
+    log('Request body keys:', Object.keys(req.body || {}));
+    log('Action recibida:', action);
+    log('Has productImage:', !!productImage);
+    log('Has userImage:', !!userImage);
+
     // Si la acción es 'categorize', solo categorizar la imagen del producto
     if (action === 'categorize') {
+      log('✅ Modo categorización detectado');
       if (!productImage) {
         return res.status(400).json({ success: false, error: 'No se recibió imagen del producto para categorizar' });
       }

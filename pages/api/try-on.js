@@ -57,6 +57,16 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
   return `
+⚙️ MODE: DETAILED_SLOW_ANALYSIS
+Before performing any image generation:
+- Take time to analyze all product images thoroughly.
+- Perform reasoning in multiple passes:
+  1. Identify user vs product.
+  2. Detect collar/neck orientation.
+  3. Cross-check with all angles.
+  4. Verify accuracy of front view.
+Do not skip or shortcut any step. Proceed only after confirming every element.
+
 🧠 DRESS THE USER WITH THE EXACT GARMENT FROM THE PRODUCT IMAGES
 
 You will receive multiple images in ANY order and ANY combination:

@@ -57,82 +57,101 @@ function buildPrompt({ productImagesCount, productImagesText, userOrientation, s
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
   return `
-DRESS THE USER WITH THE EXACT GARMENT FROM THE PRODUCT IMAGES.
+🧠 DRESS THE USER WITH THE EXACT GARMENT FROM THE PRODUCT IMAGES
 
-You will receive multiple images. These images can be in ANY order and ANY combination:
-•⁠  ⁠One image will be the USER (person to dress)
-•⁠  ⁠The rest are PRODUCT images, which may include:
-  • Only garment photos (no people)
-  • Only model photos (people wearing the garment)
-  • A mix of both garment-only and model photos
+You will receive multiple images in ANY order and ANY combination:
+• One image will be the USER (person to dress)
+• The rest are PRODUCT images, which may include:
+  • Only the garment (flat or on mannequin)
+  • Only models wearing the garment
+  • A mix of both
 
-CRITICAL ANALYSIS PROCESS - FOLLOW EXACTLY:
+──────────────────────────────────────────────
+🔍 CRITICAL ANALYSIS PROCESS — FOLLOW EXACTLY
+──────────────────────────────────────────────
 
-Step 1: IDENTIFY which image is the USER vs PRODUCT images
-•⁠  ⁠The user photo shows a person in casual/natural setting
-•⁠  ⁠Product photos show the garment (with or without models) in professional/studio setting
+Step 1: Identify User vs Product Images
+• The user photo shows a person in a natural or casual environment.
+• The product photos show the garment (with or without models) in a studio or controlled setting.
 
-Step 2: ANALYZE ALL PRODUCT IMAGES TOGETHER (not one by one)
-•⁠  ⁠Your goal: Determine which side of the garment is the FRONT
+──────────────────────────────────────────────
+🧩 Step 2: PRIORITY CHECK — NECK & COLLAR DETECTION (Primary Orientation Rule)
+──────────────────────────────────────────────
+Immediately analyze all product images to detect if the garment includes a visible neckline or collar.
 
-Step 3: PRIORITIZE images with HUMANS/MODELS wearing the garment
-•⁠  ⁠If ANY product image shows a person wearing the garment → Use that as PRIMARY reference
-•⁠  ⁠The design visible on the model's CHEST = FRONT orientation
-•⁠  ⁠This is your DEFINITIVE answer
+If a collar or neckline is visible:
+• Treat that side as the FRONT of the garment.
+• Indicators:
+  - Folded collars, plackets, or button lines
+  - V-neck, crew neck, polo neck, or shirt collar
+  - The side where the collar opens, folds, or dips lower = FRONT
 
-Step 4: If NO models in product images (only garment photos):
-•⁠  ⁠Analyze garment structure: neckline opening, collar, tag location
-•⁠  ⁠Cross-reference ALL angles to identify front vs back
+If no collar or neckline is visible (flat back surface, no cutout or buttons):
+• Treat that side as the BACK of the garment.
+• Cross-check for confirmation in Step 3.
 
-Step 5: CONCLUDE which view is FRONT
-•⁠  ⁠Use ONLY that front orientation to dress the user
-•⁠  ⁠Apply that design to user's chest
+💡 Neck-first rule:
+"If there is a visible collar or neckline → that is the front.
+ If there isn’t → that side represents the back."
 
-EXAMPLE SCENARIOS:
+──────────────────────────────────────────────
+👔 Step 3: Cross-Reference With Product Context
+──────────────────────────────────────────────
+If the collar check is inconclusive or both sides have collars (e.g., hoodies, jackets):
+1. Prioritize model photos — the design on the model’s chest = FRONT.
+2. If no model photos exist, check:
+   - Tag position → back
+   - Button placket → front
+   - Graphics/text/logos → front
+   - Neckline depth (front is lower/wider)
+   - Fabric folds or stitching direction (front drape is smoother)
 
-Scenario A: 5 images total
-•⁠  ⁠Image 1: User photo
-•⁠  ⁠Images 2-4: Garment only (different angles)
-•⁠  ⁠Image 5: Model wearing garment
-→ Prioritize image 5 (model) to identify front
+──────────────────────────────────────────────
+🧠 Step 4: Confirm Orientation
+──────────────────────────────────────────────
+After completing neck/collar and structure analysis:
+• Decide which side is FRONT and which is BACK.
+• Use ONLY the FRONT orientation to dress the user.
 
-Scenario B: 3 images total
-•⁠  ⁠Image 1: Garment front view
-•⁠  ⁠Image 2: User photo
-•⁠  ⁠Image 3: Garment back view
-→ Analyze garment structure to identify front
+──────────────────────────────────────────────
+🎨 Step 5: Dress the User
+──────────────────────────────────────────────
+• Replace ONLY the user's clothing with the product garment (using the identified FRONT).
+• Preserve:
+  - User’s face, pose, and expression
+  - Background and lighting
+• Apply the garment with correct proportions and natural neck alignment.
+• Match colors, patterns, logos, and text with 100% accuracy.
+• Size: \${size}
 
-Scenario C: 4 images total
-•⁠  ⁠Images 1-3: Models wearing garment
-•⁠  ⁠Image 4: User photo
-→ Use any model image to identify front
-
-YOUR TASK:
-•⁠  ⁠Replace ONLY user's clothing with the garment (using identified FRONT orientation)
-•⁠  ⁠Keep EVERYTHING else identical: face, body, pose, expression, background
-•⁠  ⁠Apply FRONT design to user's chest (same as model's chest if available)
-•⁠  ⁠Match colors, patterns, graphics, text with 100% accuracy
-•⁠  ⁠Size: ${size}
-
-MANDATORY GUARDRAILS - NO EXCEPTIONS:
-
+──────────────────────────────────────────────
+🚨 MANDATORY GUARDRAILS
+──────────────────────────────────────────────
 Before generating output, verify ALL conditions:
 
-✓ ORIENTATION: Front correctly identified and applied (not reversed)
-✓ DESIGN ACCURACY: 100% match to product (colors, patterns, graphics, text)
-✓ GARMENT PRESENCE: Product garment clearly visible on user
-✓ POSE PRESERVATION: User's body position IDENTICAL to input
-✓ FACE PRESERVATION: User's face UNCHANGED and recognizable
-✓ BACKGROUND PRESERVATION: Background IDENTICAL to input
-✓ REALISM: Photorealistic, natural lighting, proper fabric drape
-✓ NO ARTIFACTS: No distortions, glitches, unrealistic elements
+✓ NECK DETECTION: Collar or neckline analyzed first; orientation decided accordingly
+✓ ORIENTATION: Front correctly identified and applied
+✓ DESIGN ACCURACY: 100% match in colors, patterns, logos, and text
+✓ NECK ALIGNMENT: Natural position around user's neck and shoulders
+✓ GARMENT PRESENCE: Product garment clearly visible and proportional
+✓ POSE PRESERVATION: User's posture identical to input
+✓ FACE PRESERVATION: Face unchanged and recognizable
+✓ BACKGROUND: Identical to input
+✓ REALISM: Photorealistic lighting, natural fabric drape
+✓ NO ARTIFACTS: No distortions, stretching, or glitches
 
-IF ANY GUARDRAIL FAILS:
-→ DO NOT GENERATE OUTPUT
-→ RETURN ERROR with failure reason
-→ NEVER generate "close enough" results
+If ANY guardrail fails:
+→ DO NOT generate output
+→ RETURN ERROR with detailed failure reason
+→ NEVER produce “close enough” results
 
-RESULT: User wearing the garment with perfect front orientation, zero errors.`.trim();
+──────────────────────────────────────────────
+🎯 FINAL GOAL
+──────────────────────────────────────────────
+The user must appear wearing the exact product garment,
+with front correctly determined via neck/collar detection,
+natural neckline alignment, and perfect visual fidelity.
+`.trim();
 }
 
 function safePickGeneratedImage(resp) {

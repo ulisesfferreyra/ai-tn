@@ -375,7 +375,7 @@ Respond ONLY with one word: "front" or "back". If you cannot determine, respond 
       productImagesArray = [productImage];
       log(`✅ productImage singular recibido`);
       log(`   type=${typeof productImage}, length=${typeof productImage === 'string' ? productImage.length : 'N/A'}, preview=${typeof productImage === 'string' ? productImage.substring(0, 50) : 'N/A'}...`);
-    } else {
+    } else { 
       warn('⚠️ No se recibieron imágenes de producto (ni productImages ni productImage)');
     }
 

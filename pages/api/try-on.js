@@ -29,8 +29,24 @@ const SIZE_MAP = {
 };
 
 function parseDataUrl(dataUrl) {
-  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return null;
-  const m = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (typeof dataUrl !== 'string') return null;
+  
+  // Normalizar data URLs con prefijos duplicados (ej: data:image/jpeg;base64,data:image/jpeg;base64,...)
+  let normalized = dataUrl;
+  if (normalized.includes('data:image/')) {
+    const matches = normalized.match(/data:image\/[^;]+;base64,/g);
+    if (matches && matches.length > 1) {
+      // Tiene prefijos duplicados, usar solo el último
+      const lastIndex = normalized.lastIndexOf('data:image/');
+      if (lastIndex > 0) {
+        normalized = normalized.substring(lastIndex);
+        warn('⚠️ Normalizado data URL (prefijos duplicados detectados)');
+      }
+    }
+  }
+  
+  if (!normalized.startsWith('data:image/')) return null;
+  const m = normalized.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
   if (!m) return null;
   return { mime: m[1], base64: m[2] };
 }
@@ -272,15 +288,23 @@ export default async function handler(req, res) {
     // Si la acción es 'categorize', solo categorizar la imagen del producto
     if (action === 'categorize') {
       log('✅ Modo categorización detectado');
+      log(`📤 Request de categorización: productImage length=${productImage ? productImage.length : 0} chars`);
+      log(`   Preview: ${productImage ? productImage.substring(0, 100) : 'N/A'}...`);
+      
       if (!productImage) {
         return res.status(400).json({ success: false, error: 'No se recibió imagen del producto para categorizar' });
       }
 
       try {
+        log(`🔍 Parseando productImage para categorización...`);
         const parsed = parseDataUrl(productImage);
         if (!parsed) {
+          log(`❌ Error: productImage no es data URL válida después de parseDataUrl`);
+          log(`   Raw preview: ${productImage.substring(0, 150)}...`);
           return res.status(400).json({ success: false, error: 'productImage debe ser una data URL base64 válida' });
         }
+        
+        log(`✅ Parseado exitosamente: mime=${parsed.mime}, base64 length=${parsed.base64.length}`);
 
         const processedImage = await normalizeToJpegBuffer(parsed.base64);
         const genAI = new GoogleGenerativeAI(API_KEY);
@@ -382,30 +406,62 @@ Respond ONLY with one word: "front" or "back". If you cannot determine, respond 
     const maxTotalSizeMB = 15;
     let totalMB = processedUserImage.length / 1024 / 1024;
 
+    let processedCount = 0;
     for (let i = 0; i < productImagesArray.length; i++) {
       const raw = productImagesArray[i];
       try {
-        if (!raw || typeof raw !== 'string') { warn(`productImages[${i}] inválida (no string)`); continue; }
+        if (!raw || typeof raw !== 'string') { 
+          warn(`productImages[${i}] inválida (no string)`); 
+          continue; 
+        }
+        
+        log(`📸 Procesando productImages[${i}]: ${raw.substring(0, 50)}... (${raw.length} chars)`);
+        
         const parsed = parseDataUrl(raw);
-        if (!parsed) { warn(`productImages[${i}] no es data URL válida`); continue; }
+        if (!parsed) { 
+          warn(`productImages[${i}] no es data URL válida después de parseDataUrl`);
+          log(`   Raw preview: ${raw.substring(0, 100)}...`);
+          continue; 
+        }
+
+        log(`   ✅ Parseado: mime=${parsed.mime}, base64 length=${parsed.base64.length}`);
 
         const supported = /^(image\/)(jpeg|jpg|png|webp)$/i.test(parsed.mime);
-        if (!supported) { warn(`productImages[${i}] formato no soportado: ${parsed.mime}`); continue; }
+        if (!supported) { 
+          warn(`productImages[${i}] formato no soportado: ${parsed.mime}`); 
+          continue; 
+        }
 
         // Calcular tamaño aprox del base64 (antes de normalizar)
         const approxMB = parsed.base64.length / 1024 / 1024;
-        if (approxMB > maxImageSizeMB) { warn(`productImages[${i}] > ${maxImageSizeMB}MB (${approxMB.toFixed(2)} MB)`); continue; }
+        if (approxMB > maxImageSizeMB) { 
+          warn(`productImages[${i}] > ${maxImageSizeMB}MB (${approxMB.toFixed(2)} MB)`); 
+          continue; 
+        }
 
         // Normalizamos a jpeg para coherencia
         const buf = await normalizeToJpegBuffer(parsed.base64);
         totalMB += buf.length / 1024 / 1024;
-        if (totalMB > maxTotalSizeMB) { warn(`Total imágenes > ${maxTotalSizeMB}MB. Se omite productImages[${i}]`); totalMB -= buf.length / 1024 / 1024; continue; }
+        if (totalMB > maxTotalSizeMB) { 
+          warn(`Total imágenes > ${maxTotalSizeMB}MB. Se omite productImages[${i}]`); 
+          totalMB -= buf.length / 1024 / 1024; 
+          continue; 
+        }
 
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: buf.toString('base64') } });
+        processedCount++;
         log(`+ producto[${i}] OK (${(buf.length/1024).toFixed(2)} KB)`);
       } catch (imgErr) {
         err(`Error procesando productImages[${i}]:`, imgErr.message);
+        err(`   Stack:`, imgErr.stack);
       }
+    }
+    
+    log(`📊 Total de imágenes de producto procesadas exitosamente: ${processedCount}/${productImagesArray.length}`);
+    
+    if (processedCount === 0 && productImagesArray.length > 0) {
+      warn('⚠️ CRÍTICO: Ninguna imagen del producto se pudo procesar correctamente');
+      warn('   Esto causará que el sistema entre en modo fallback');
     }
 
     log(`Parts a enviar: ${parts.length} | total aprox MB: ${totalMB.toFixed(2)} | orientation=${selectedOrientation} | size=${size || 'M'}`);

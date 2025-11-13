@@ -359,12 +359,22 @@ Respond ONLY with one word: "front" or "back". If you cannot determine, respond 
 
     // Unificar imágenes de producto
     let productImagesArray = [];
+    log(`🔍 DEBUG: Verificando imágenes de producto recibidas...`);
+    log(`   - productImages es array: ${Array.isArray(productImages)}`);
+    log(`   - productImages length: ${Array.isArray(productImages) ? productImages.length : 'N/A'}`);
+    log(`   - productImage presente: ${!!productImage}`);
+    log(`   - productImage type: ${typeof productImage}`);
     if (Array.isArray(productImages) && productImages.length) {
       productImagesArray = productImages;
       log(`✅ productImages array recibido: ${productImages.length} imágenes`);
+      // Log preview de cada imagen
+      productImages.forEach((img, idx) => {
+        log(`   [${idx + 1}] type=${typeof img}, length=${typeof img === 'string' ? img.length : 'N/A'}, preview=${typeof img === 'string' ? img.substring(0, 50) : 'N/A'}...`);
+      });
     } else if (productImage) {
       productImagesArray = [productImage];
       log(`✅ productImage singular recibido`);
+      log(`   type=${typeof productImage}, length=${typeof productImage === 'string' ? productImage.length : 'N/A'}, preview=${typeof productImage === 'string' ? productImage.substring(0, 50) : 'N/A'}...`);
     } else {
       warn('⚠️ No se recibieron imágenes de producto (ni productImages ni productImage)');
     }
@@ -459,13 +469,29 @@ Respond ONLY with one word: "front" or "back". If you cannot determine, respond 
     
     log(`📊 Total de imágenes de producto procesadas exitosamente: ${processedCount}/${productImagesArray.length}`);
     
-    if (processedCount === 0 && productImagesArray.length > 0) {
-      warn('⚠️ CRÍTICO: Ninguna imagen del producto se pudo procesar correctamente');
-      warn('   Esto causará que el sistema entre en modo fallback');
+    // Validación crítica: si no hay imágenes del producto procesadas, entrar en fallback inmediatamente
+    if (processedCount === 0) {
+      if (productImagesArray.length > 0) {
+        warn('⚠️ CRÍTICO: Ninguna imagen del producto se pudo procesar correctamente');
+        warn(`   Se recibieron ${productImagesArray.length} imágenes pero ninguna se pudo procesar`);
+        warn('   Esto causará que el sistema entre en modo fallback');
+      } else {
+        warn('⚠️ ADVERTENCIA: No se recibieron imágenes del producto');
+        warn('   Esto causará que el sistema entre en modo fallback');
+      }
+      // Lanzar error para entrar en modo fallback
+      throw new Error('No se pudieron procesar las imágenes del producto. Entrando en modo fallback.');
     }
 
     log(`Parts a enviar: ${parts.length} | total aprox MB: ${totalMB.toFixed(2)} | orientation=${selectedOrientation} | size=${size || 'M'}`);
     log(`Parts breakdown: prompt=${parts[0]?.text ? 'SÍ' : 'NO'} | userImage=${parts[1]?.inlineData ? 'SÍ' : 'NO'} | productImages=${parts.length - 2} imágenes`);
+    
+    // Validación adicional: asegurar que tenemos al menos el prompt y la imagen del usuario
+    if (parts.length < 2) {
+      err('❌ ERROR CRÍTICO: No hay suficientes parts para enviar a Google AI');
+      err(`   Parts disponibles: ${parts.length} (se necesitan al menos 2: prompt + userImage)`);
+      throw new Error('No hay suficientes datos para procesar la solicitud');
+    }
 
     // Init modelo
     const genAI = new GoogleGenerativeAI(API_KEY);

@@ -335,8 +335,17 @@ Respond ONLY with one word: "front" or "back". If you cannot determine, respond 
 
     // Unificar imágenes de producto
     let productImagesArray = [];
-    if (Array.isArray(productImages) && productImages.length) productImagesArray = productImages;
-    else if (productImage) productImagesArray = [productImage];
+    if (Array.isArray(productImages) && productImages.length) {
+      productImagesArray = productImages;
+      log(`✅ productImages array recibido: ${productImages.length} imágenes`);
+    } else if (productImage) {
+      productImagesArray = [productImage];
+      log(`✅ productImage singular recibido`);
+    } else {
+      warn('⚠️ No se recibieron imágenes de producto (ni productImages ni productImage)');
+    }
+
+    log(`📊 Total de imágenes de producto a procesar: ${productImagesArray.length}`);
 
     const selectedOrientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
 

@@ -29,24 +29,8 @@ const SIZE_MAP = {
 };
 
 function parseDataUrl(dataUrl) {
-  if (typeof dataUrl !== 'string') return null;
-  
-  // Normalizar data URLs con prefijos duplicados (ej: data:image/jpeg;base64,data:image/jpeg;base64,...)
-  let normalized = dataUrl;
-  if (normalized.includes('data:image/')) {
-    const matches = normalized.match(/data:image\/[^;]+;base64,/g);
-    if (matches && matches.length > 1) {
-      // Tiene prefijos duplicados, usar solo el último
-      const lastIndex = normalized.lastIndexOf('data:image/');
-      if (lastIndex > 0) {
-        normalized = normalized.substring(lastIndex);
-        warn('⚠️ Normalizado data URL (prefijos duplicados detectados)');
-      }
-    }
-  }
-  
-  if (!normalized.startsWith('data:image/')) return null;
-  const m = normalized.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return null;
+  const m = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
   if (!m) return null;
   return { mime: m[1], base64: m[2] };
 }
@@ -118,13 +102,13 @@ If no collar or neckline is visible (flat back surface, no cutout or buttons):
 
 💡 Neck-first rule:
 "If there is a visible collar or neckline → that is the front.
- If there isn't → that side represents the back."
+ If there isn’t → that side represents the back."
 
 ──────────────────────────────────────────────
 👔 Step 3: Cross-Reference With Product Context
 ──────────────────────────────────────────────
 If the collar check is inconclusive or both sides have collars (e.g., hoodies, jackets):
-1. Prioritize model photos — the design on the model's chest = FRONT.
+1. Prioritize model photos — the design on the model’s chest = FRONT.
 2. If no model photos exist, check:
    - Tag position → back
    - Button placket → front
@@ -144,11 +128,11 @@ After completing neck/collar and structure analysis:
 ──────────────────────────────────────────────
 • Replace ONLY the user's clothing with the product garment (using the identified FRONT).
 • Preserve:
-  - User's face, pose, and expression
+  - User’s face, pose, and expression
   - Background and lighting
 • Apply the garment with correct proportions and natural neck alignment.
 • Match colors, patterns, logos, and text with 100% accuracy.
-• Size: ${size}
+• Size: \${size}
 
 ──────────────────────────────────────────────
 🚨 MANDATORY GUARDRAILS
@@ -169,7 +153,7 @@ Before generating output, verify ALL conditions:
 If ANY guardrail fails:
 → DO NOT generate output
 → RETURN ERROR with detailed failure reason
-→ NEVER produce "close enough" results
+→ NEVER produce “close enough” results
 
 ──────────────────────────────────────────────
 🎯 FINAL GOAL
@@ -277,109 +261,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { action, productImage, productImages, size, userImage, userOrientation } = req.body || {};
+    const { productImage, productImages, size, userImage, userOrientation } = req.body || {};
 
-    // Log para debugging
-    log('Request body keys:', Object.keys(req.body || {}));
-    log('Action recibida:', action);
-    log('Has productImage:', !!productImage);
-    log('Has userImage:', !!userImage);
-
-    // Si la acción es 'categorize', solo categorizar la imagen del producto
-    if (action === 'categorize') {
-      log('✅ Modo categorización detectado');
-      log(`📤 Request de categorización: productImage length=${productImage ? productImage.length : 0} chars`);
-      log(`   Preview: ${productImage ? productImage.substring(0, 100) : 'N/A'}...`);
-      
-      if (!productImage) {
-        return res.status(400).json({ success: false, error: 'No se recibió imagen del producto para categorizar' });
-      }
-
-      try {
-        log(`🔍 Parseando productImage para categorización...`);
-        const parsed = parseDataUrl(productImage);
-        if (!parsed) {
-          log(`❌ Error: productImage no es data URL válida después de parseDataUrl`);
-          log(`   Raw preview: ${productImage.substring(0, 150)}...`);
-          return res.status(400).json({ success: false, error: 'productImage debe ser una data URL base64 válida' });
-        }
-        
-        log(`✅ Parseado exitosamente: mime=${parsed.mime}, base64 length=${parsed.base64.length}`);
-
-        const processedImage = await normalizeToJpegBuffer(parsed.base64);
-        const genAI = new GoogleGenerativeAI(API_KEY);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-image' });
-
-        // Prompt para categorizar la imagen
-        const categorizePrompt = `Analyze this clothing product image. Determine if it shows the FRONT (front-facing, with buttons, zipper, or main design visible) or BACK (back-facing, showing the back of the garment) of the clothing item.
-
-Respond ONLY with one word: "front" or "back". If you cannot determine, respond with "unknown".`;
-
-        const parts = [
-          { text: categorizePrompt },
-          { inlineData: { mimeType: 'image/jpeg', data: processedImage.toString('base64') } },
-        ];
-
-        log('📤 Enviando solicitud de categorización a Google AI...');
-        const result = await model.generateContent({ contents: [{ role: 'user', parts }] });
-        const response = await result.response;
-        
-        if (!response || !response.candidates?.[0]?.content?.parts?.[0]?.text) {
-          return res.status(500).json({ success: false, error: 'No se pudo obtener respuesta de categorización' });
-        }
-
-        const categoryText = response.candidates[0].content.parts[0].text.trim().toLowerCase();
-        let orientation = 'unknown';
-        
-        if (categoryText.includes('front')) {
-          orientation = 'front';
-        } else if (categoryText.includes('back')) {
-          orientation = 'back';
-        }
-
-        log(`✅ Categorización completada: ${orientation}`);
-
-        return res.json({
-          success: true,
-          orientation,
-          rawResponse: categoryText,
-        });
-      } catch (error) {
-        err('Error categorizando imagen:', error);
-        return res.status(500).json({
-          success: false,
-          error: 'Error categorizando imagen',
-          details: error.message,
-        });
-      }
-    }
-
-    // Flujo normal: generar imagen
     if (!userImage) return res.status(400).json({ success: false, error: 'No se recibió imagen del usuario' });
 
     // Unificar imágenes de producto
     let productImagesArray = [];
-    log(`🔍 DEBUG: Verificando imágenes de producto recibidas...`);
-    log(`   - productImages es array: ${Array.isArray(productImages)}`);
-    log(`   - productImages length: ${Array.isArray(productImages) ? productImages.length : 'N/A'}`);
-    log(`   - productImage presente: ${!!productImage}`);
-    log(`   - productImage type: ${typeof productImage}`);
-    if (Array.isArray(productImages) && productImages.length) {
-      productImagesArray = productImages;
-      log(`✅ productImages array recibido: ${productImages.length} imágenes`);
-      // Log preview de cada imagen
-      productImages.forEach((img, idx) => {
-        log(`   [${idx + 1}] type=${typeof img}, length=${typeof img === 'string' ? img.length : 'N/A'}, preview=${typeof img === 'string' ? img.substring(0, 50) : 'N/A'}...`);
-      });
-    } else if (productImage) {
-      productImagesArray = [productImage];
-      log(`✅ productImage singular recibido`);
-      log(`   type=${typeof productImage}, length=${typeof productImage === 'string' ? productImage.length : 'N/A'}, preview=${typeof productImage === 'string' ? productImage.substring(0, 50) : 'N/A'}...`);
-    } else { 
-      warn('⚠️ No se recibieron imágenes de producto (ni productImages ni productImage)');
-    }
-
-    log(`📊 Total de imágenes de producto a procesar: ${productImagesArray.length}`);
+    if (Array.isArray(productImages) && productImages.length) productImagesArray = productImages;
+    else if (productImage) productImagesArray = [productImage];
 
     const selectedOrientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
 
@@ -416,82 +305,34 @@ Respond ONLY with one word: "front" or "back". If you cannot determine, respond 
     const maxTotalSizeMB = 15;
     let totalMB = processedUserImage.length / 1024 / 1024;
 
-    let processedCount = 0;
     for (let i = 0; i < productImagesArray.length; i++) {
       const raw = productImagesArray[i];
       try {
-        if (!raw || typeof raw !== 'string') { 
-          warn(`productImages[${i}] inválida (no string)`); 
-          continue; 
-        }
-        
-        log(`📸 Procesando productImages[${i}]: ${raw.substring(0, 50)}... (${raw.length} chars)`);
-        
+        if (!raw || typeof raw !== 'string') { warn(`productImages[${i}] inválida (no string)`); continue; }
         const parsed = parseDataUrl(raw);
-        if (!parsed) { 
-          warn(`productImages[${i}] no es data URL válida después de parseDataUrl`);
-          log(`   Raw preview: ${raw.substring(0, 100)}...`);
-          continue; 
-        }
-
-        log(`   ✅ Parseado: mime=${parsed.mime}, base64 length=${parsed.base64.length}`);
+        if (!parsed) { warn(`productImages[${i}] no es data URL válida`); continue; }
 
         const supported = /^(image\/)(jpeg|jpg|png|webp)$/i.test(parsed.mime);
-        if (!supported) { 
-          warn(`productImages[${i}] formato no soportado: ${parsed.mime}`); 
-          continue; 
-        }
+        if (!supported) { warn(`productImages[${i}] formato no soportado: ${parsed.mime}`); continue; }
 
         // Calcular tamaño aprox del base64 (antes de normalizar)
         const approxMB = parsed.base64.length / 1024 / 1024;
-        if (approxMB > maxImageSizeMB) { 
-          warn(`productImages[${i}] > ${maxImageSizeMB}MB (${approxMB.toFixed(2)} MB)`); 
-          continue; 
-        }
+        if (approxMB > maxImageSizeMB) { warn(`productImages[${i}] > ${maxImageSizeMB}MB (${approxMB.toFixed(2)} MB)`); continue; }
 
         // Normalizamos a jpeg para coherencia
         const buf = await normalizeToJpegBuffer(parsed.base64);
         totalMB += buf.length / 1024 / 1024;
-        if (totalMB > maxTotalSizeMB) { 
-          warn(`Total imágenes > ${maxTotalSizeMB}MB. Se omite productImages[${i}]`); 
-          totalMB -= buf.length / 1024 / 1024; 
-          continue; 
-        }
+        if (totalMB > maxTotalSizeMB) { warn(`Total imágenes > ${maxTotalSizeMB}MB. Se omite productImages[${i}]`); totalMB -= buf.length / 1024 / 1024; continue; }
 
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: buf.toString('base64') } });
-        processedCount++;
         log(`+ producto[${i}] OK (${(buf.length/1024).toFixed(2)} KB)`);
       } catch (imgErr) {
         err(`Error procesando productImages[${i}]:`, imgErr.message);
-        err(`   Stack:`, imgErr.stack);
       }
-    }
-    
-    log(`📊 Total de imágenes de producto procesadas exitosamente: ${processedCount}/${productImagesArray.length}`);
-    
-    // Validación crítica: si no hay imágenes del producto procesadas, entrar en fallback inmediatamente
-    if (processedCount === 0) {
-      if (productImagesArray.length > 0) {
-        warn('⚠️ CRÍTICO: Ninguna imagen del producto se pudo procesar correctamente');
-        warn(`   Se recibieron ${productImagesArray.length} imágenes pero ninguna se pudo procesar`);
-        warn('   Esto causará que el sistema entre en modo fallback');
-      } else {
-        warn('⚠️ ADVERTENCIA: No se recibieron imágenes del producto');
-        warn('   Esto causará que el sistema entre en modo fallback');
-      }
-      // Lanzar error para entrar en modo fallback
-      throw new Error('No se pudieron procesar las imágenes del producto. Entrando en modo fallback.');
     }
 
     log(`Parts a enviar: ${parts.length} | total aprox MB: ${totalMB.toFixed(2)} | orientation=${selectedOrientation} | size=${size || 'M'}`);
     log(`Parts breakdown: prompt=${parts[0]?.text ? 'SÍ' : 'NO'} | userImage=${parts[1]?.inlineData ? 'SÍ' : 'NO'} | productImages=${parts.length - 2} imágenes`);
-    
-    // Validación adicional: asegurar que tenemos al menos el prompt y la imagen del usuario
-    if (parts.length < 2) {
-      err('❌ ERROR CRÍTICO: No hay suficientes parts para enviar a Google AI');
-      err(`   Parts disponibles: ${parts.length} (se necesitan al menos 2: prompt + userImage)`);
-      throw new Error('No hay suficientes datos para procesar la solicitud');
-    }
 
     // Init modelo
     const genAI = new GoogleGenerativeAI(API_KEY);
@@ -634,28 +475,12 @@ Respond ONLY with one word: "front" or "back". If you cannot determine, respond 
           errorDetails: errorDescription,
         });
       }
-      
-      // Normalizar userImage para evitar prefijos duplicados
-      let normalizedUserImage = body.userImage;
-      if (typeof normalizedUserImage === 'string') {
-        // Detectar si tiene prefijo duplicado
-        const matches = normalizedUserImage.match(/data:image\/[^;]+;base64,/g);
-        if (matches && matches.length > 1) {
-          // Tomar desde el último "data:image/"
-          const lastIndex = normalizedUserImage.lastIndexOf('data:image/');
-          if (lastIndex > 0) {
-            normalizedUserImage = normalizedUserImage.substring(lastIndex);
-            warn('⚠️ Normalizado userImage en fallback (prefijos duplicados detectados)');
-          }
-        }
-      }
-      
       return res.json({
         success: true,
         description: 'Imagen procesada (modo fallback)',
-        originalImage: normalizedUserImage,
-        generatedImage: normalizedUserImage,
-        finalImage: normalizedUserImage,
+        originalImage: body.userImage,
+        generatedImage: body.userImage,
+        finalImage: body.userImage,
         size: body.size || 'M',
         orientation: ALLOWED_ORIENTATIONS.has(body.userOrientation) ? body.userOrientation : 'front',
         fallback: true,
@@ -674,4 +499,4 @@ Respond ONLY with one word: "front" or "back". If you cannot determine, respond 
       });
     }
   }
-}
+}    

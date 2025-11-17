@@ -1,0 +1,15 @@
+{
+  "name": "ai-tryon-lambda",
+  "version": "1.0.0",
+  "description": "AI Try-On Lambda (serverless backend)",
+  "main": "lambda/handler.js",
+  "license": "MIT",
+  "scripts": {
+    "build": "echo 'Lambda built via Docker, not via npm'",
+    "test": "echo 'No tests yet'"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "sharp": "^0.33.5"
+  }
+}

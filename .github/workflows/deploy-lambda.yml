@@ -1,0 +1,63 @@
+name: Deploy Lambda Image
+
+on:
+  push:
+    branches:
+      - main # TODO: ajusta la rama si usas otra
+
+permissions:
+  id-token: write   # requerido para OIDC con AWS
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: aws
+        run: npm ci
+
+      - name: Run tests (opcional)
+        working-directory: aws
+        run: npm test
+        continue-on-error: true # TODO: quita esto cuando tengas tests estables
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }} # TODO: define en Secrets
+          aws-region: ${{ secrets.AWS_REGION }}             # TODO: define en Secrets
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}          # TODO: define en Secrets
+          REGION: ${{ secrets.AWS_REGION }}                  # TODO: define en Secrets
+        working-directory: aws
+        run: |
+          IMAGE_URI=${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/tryon-api-lambda:${{ github.sha }}
+          echo "Building ${IMAGE_URI}"
+          docker build -t ${IMAGE_URI} .
+          docker push ${IMAGE_URI}
+
+      - name: Update Lambda function
+        env:
+          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}          # TODO: define en Secrets
+          REGION: ${{ secrets.AWS_REGION }}                  # TODO: define en Secrets
+        run: |
+          IMAGE_URI=${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/tryon-api-lambda:${{ github.sha }}
+          # TODO: reemplaza TRYON_API_LAMBDA_NAME con el nombre real de la función
+          aws lambda update-function-code \
+            --function-name TRYON_API_LAMBDA_NAME \
+            --image-uri ${IMAGE_URI}

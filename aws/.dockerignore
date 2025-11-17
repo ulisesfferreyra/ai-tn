@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+.git
+.github
+/next
+next
+next.config.js
+*.md

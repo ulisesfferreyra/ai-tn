@@ -336,7 +336,7 @@ export default async function handler(req, res) {
 
     // Init modelo
     const genAI = new GoogleGenerativeAI(API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-image' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.0-pro' });
 
     // Llamada
     let result, response;

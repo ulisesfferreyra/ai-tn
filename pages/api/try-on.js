@@ -67,47 +67,54 @@ function buildPrompt({ productImagesCount, userOrientation, size }) {
 
 TASK: Dress the user (first image) with the exact garment from the product images (remaining images).
 
-⚠️ CRITICAL: ORIENTATION DETECTION RULES
+⚠️ CRITICAL: ORIENTATION DETECTION RULES - FOLLOW EXACTLY
 
-IMPORTANT: The order of product images does NOT indicate which side is front or back. You must analyze each image carefully.
+IMAGE ORDER (FIXED):
+- Image 1: USER (person to dress) - ALWAYS
+- Image 2: First product image (could be front OR back - you must determine)
+- Image 3, 4, etc.: Additional product images (may include models wearing the garment)
 
 STEP 1: Identify User vs Product Images
-- The FIRST image is always the USER (person to dress)
-- All remaining images are PRODUCT images (the garment)
+- Image 1 = USER (person to dress)
+- Images 2+ = PRODUCT images (the garment)
 
-STEP 2: Analyze Product Images for Orientation
+STEP 2: DETERMINE IF IMAGE 2 IS FRONT OR BACK
 
-A) Look for photos of PEOPLE/MODELS wearing the garment:
-   - If you see a person wearing the garment facing the camera (front view):
-     * This shows the FRONT of the garment
-     * Note the design/graphics visible on the FRONT
-     * Compare this design with other product images
+CRITICAL LOGIC - Follow this EXACT sequence:
+
+A) Search for MODEL photos in images 3, 4, etc.:
+   - Look for images showing a PERSON/MODEL wearing the garment facing the camera (front view)
+   - If you find such an image, note the design/graphics visible on the FRONT of the garment (chest area)
+
+B) Compare designs:
+   - Extract the design/graphics from Image 2 (first product image)
+   - Extract the design/graphics from the model photo (if found in images 3+)
+   - Compare them carefully:
+     * Are they the SAME design/graphics? → Image 2 is likely the FRONT
+     * Are they DIFFERENT designs/graphics? → Image 2 is the BACK
+
+C) Decision rule:
+   - IF you found a model photo (in images 3+) showing the garment from the front:
+     * IF the design/graphics on the model's front ≠ design/graphics on Image 2:
+       → Image 2 = BACK of the garment
+       → Use the model photo to identify the correct FRONT design
+     * IF the design/graphics on the model's front = design/graphics on Image 2:
+       → Image 2 = FRONT of the garment
    
-   - If a product image shows a person wearing the garment from the front AND the design/graphics are DIFFERENT from the first product image:
-     * Then the FIRST product image is likely the BACK of the garment
-     * Use the model photo to identify the correct FRONT design
+   - IF no model photo found in images 3+:
+     * Analyze Image 2 for orientation indicators:
+       - FRONT: collars, necklines, buttons, zippers, main graphics/logos, text, complex designs
+       - BACK: simpler design, tags, no collar/buttons, different graphics than front
+     * Use these indicators to determine if Image 2 is front or back
 
-B) Analyze garment-only images (no person):
-   - FRONT indicators: collars, necklines, buttons, zippers, main graphics/logos, text, complex designs
-   - BACK indicators: simpler design, tags, no collar/buttons, different graphics than front
-   - If you see a collar or neckline opening → that side is the FRONT
-   - If you see tags or a simpler design → that side is likely the BACK
-
-C) Cross-reference logic:
-   - If product images include BOTH a model photo (front view) AND garment-only photos:
-     * Compare the design visible on the model's chest/front with garment-only images
-     * If the first garment-only image has a DIFFERENT design than what's on the model's front:
-       → The first image is the BACK, use the model photo to find the FRONT
-     * If designs match → the first image is likely the FRONT
-
-STEP 3: Determine Correct FRONT to Use
-- Prioritize model photos showing the garment being worn correctly
-- If model photos show a different design than garment-only images, trust the model photos
-- Always use the FRONT side (as determined above) to dress the user
+STEP 3: Determine Correct FRONT Design to Use
+- If Image 2 is the BACK: Look for the FRONT design in model photos (images 3+) or other product images
+- If Image 2 is the FRONT: Use Image 2's design
+- Always use the FRONT side design to dress the user
 
 DRESSING INSTRUCTIONS:
 - Replace ONLY the user's clothing with the product garment
-- Use the CORRECT FRONT side of the garment (determined through analysis above)
+- Use the CORRECT FRONT side design (as determined by the comparison logic above)
 - Preserve: user's face, pose, expression, background, lighting
 - Match colors, patterns, logos, graphics, and text with 100% accuracy from the FRONT side
 - Ensure natural neckline alignment and proper fit
@@ -115,7 +122,8 @@ DRESSING INSTRUCTIONS:
 - Make it photorealistic with natural fabric drape
 
 VERIFICATION BEFORE GENERATING:
-✓ Correctly identified which product images show FRONT vs BACK
+✓ Compared Image 2 design with model photo design (if model photo exists)
+✓ Correctly determined if Image 2 is FRONT or BACK based on design comparison
 ✓ Using the FRONT design (not the back) to dress the user
 ✓ Design/graphics match what should be on the front of the garment
 ✓ User's pose and orientation match the garment application

@@ -1,4 +1,6 @@
 // /pages/api/tryon.js
+// VERSIÓN MEJORADA CON GEMINI 3 PRO IMAGE PREVIEW
+// Basado en: https://ai.google.dev/gemini-api/docs/image-generation
 
 import sharp from 'sharp';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -19,6 +21,7 @@ const warn = (...a) => console.warn('[TRY-ON]', ...a);
 const err  = (...a) => console.error('[TRY-ON]', ...a);
 
 const ALLOWED_ORIENTATIONS = new Set(['front', 'back']);
+
 const SIZE_MAP = {
   XS: 'very tight, form-fitting',
   S: 'fitted, slightly snug, close to body',
@@ -27,6 +30,10 @@ const SIZE_MAP = {
   XL: 'oversized, loose-fitting, baggy',
   XXL: 'very oversized, very loose, very baggy',
 };
+
+// Modelo a usar: Gemini 3 Pro Image Preview tiene mejor análisis y "Thinking" por defecto
+// Alternativa: 'gemini-2.5-flash-image' para mayor velocidad (pero menos precisión)
+const MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-3-pro-image-preview';
 
 function parseDataUrl(dataUrl) {
   if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return null;
@@ -50,136 +57,59 @@ async function normalizeToJpegBuffer(base64) {
 }
 
 // =======================
-// PROMPT (NO TOCAR)
+// PROMPT MEJORADO - Más simple y directo, aprovechando el "Thinking" del modelo
 // =======================
-function buildPrompt({ productImagesCount, productImagesText, userOrientation, size }) {
+function buildPrompt({ productImagesCount, userOrientation, size }) {
   const orientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
-  return `
-⚙️ MODE: DETAILED_SLOW_ANALYSIS
-Before performing any image generation:
-- Take time to analyze all product images thoroughly.
-- Perform reasoning in multiple passes:
-  1. Identify user vs product.
-  2. Detect collar/neck orientation.
-  3. Cross-check with all angles.
-  4. Verify accuracy of front view.
-Do not skip or shortcut any step. Proceed only after confirming every element.
+  return `You are an expert fashion AI that dresses people with clothing items.
 
-🧠 DRESS THE USER WITH THE EXACT GARMENT FROM THE PRODUCT IMAGES
+TASK: Dress the user (first image) with the exact garment from the product images (remaining images).
 
-You will receive multiple images in ANY order and ANY combination:
-• One image will be the USER (person to dress)
-• The rest are PRODUCT images, which may include:
-  • Only the garment (flat or on mannequin)
-  • Only models wearing the garment
-  • A mix of both
+ANALYSIS PROCESS:
+1. Identify which image is the USER (person to dress) vs PRODUCT images (garment photos)
+2. Analyze all product images to determine:
+   - Which side is FRONT (look for collars, necklines, buttons, logos, graphics)
+   - Which side is BACK (look for tags, simpler design, no collar/buttons)
+   - If product images show models wearing the garment, use those as reference for front/back
+3. Match the garment's FRONT orientation to dress the user correctly
 
-──────────────────────────────────────────────
-🔍 CRITICAL ANALYSIS PROCESS — FOLLOW EXACTLY
-──────────────────────────────────────────────
+CRITICAL RULES:
+- The first image is always the USER (person to dress)
+- Product images may show: the garment alone, models wearing it, or both
+- If a collar, neckline, buttons, or graphics are visible → that's the FRONT
+- If no collar/buttons and simpler design → that's likely the BACK
+- When in doubt, prioritize model photos showing the garment being worn
 
-Step 1: Identify User vs Product Images
-• The user photo shows a person in a natural or casual environment.
-• The product photos show the garment (with or without models) in a studio or controlled setting.
+DRESSING INSTRUCTIONS:
+- Replace ONLY the user's clothing with the product garment
+- Use the FRONT side of the garment (as determined from product images)
+- Preserve: user's face, pose, expression, background, lighting
+- Match colors, patterns, logos, and text with 100% accuracy
+- Ensure natural neckline alignment and proper fit
+- Size: ${sizeInstruction}
+- Make it photorealistic with natural fabric drape
 
-──────────────────────────────────────────────
-🧩 Step 2: PRIORITY CHECK — NECK & COLLAR DETECTION (Primary Orientation Rule)
-──────────────────────────────────────────────
-Immediately analyze all product images to detect if the garment includes a visible neckline or collar.
-
-If a collar or neckline is visible:
-• Treat that side as the FRONT of the garment.
-• Indicators:
-  - Folded collars, plackets, or button lines
-  - V-neck, crew neck, polo neck, or shirt collar
-  - The side where the collar opens, folds, or dips lower = FRONT
-
-If no collar or neckline is visible (flat back surface, no cutout or buttons):
-• Treat that side as the BACK of the garment.
-• Cross-check for confirmation in Step 3.
-
-💡 Neck-first rule:
-"If there is a visible collar or neckline → that is the front.
- If there isn’t → that side represents the back."
-
-──────────────────────────────────────────────
-👔 Step 3: Cross-Reference With Product Context
-──────────────────────────────────────────────
-If the collar check is inconclusive or both sides have collars (e.g., hoodies, jackets):
-1. Prioritize model photos — the design on the model’s chest = FRONT.
-2. If no model photos exist, check:
-   - Tag position → back
-   - Button placket → front
-   - Graphics/text/logos → front
-   - Neckline depth (front is lower/wider)
-   - Fabric folds or stitching direction (front drape is smoother)
-
-──────────────────────────────────────────────
-🧠 Step 4: Confirm Orientation
-──────────────────────────────────────────────
-After completing neck/collar and structure analysis:
-• Decide which side is FRONT and which is BACK.
-• Use ONLY the FRONT orientation to dress the user.
-
-──────────────────────────────────────────────
-🎨 Step 5: Dress the User
-──────────────────────────────────────────────
-• Replace ONLY the user's clothing with the product garment (using the identified FRONT).
-• Preserve:
-  - User’s face, pose, and expression
-  - Background and lighting
-• Apply the garment with correct proportions and natural neck alignment.
-• Match colors, patterns, logos, and text with 100% accuracy.
-• Size: \${size}
-
-──────────────────────────────────────────────
-🚨 MANDATORY GUARDRAILS
-──────────────────────────────────────────────
-Before generating output, verify ALL conditions:
-
-✓ NECK DETECTION: Collar or neckline analyzed first; orientation decided accordingly
-✓ ORIENTATION: Front correctly identified and applied
-✓ DESIGN ACCURACY: 100% match in colors, patterns, logos, and text
-✓ NECK ALIGNMENT: Natural position around user's neck and shoulders
-✓ GARMENT PRESENCE: Product garment clearly visible and proportional
-✓ POSE PRESERVATION: User's posture identical to input
-✓ FACE PRESERVATION: Face unchanged and recognizable
-✓ BACKGROUND: Identical to input
-✓ REALISM: Photorealistic lighting, natural fabric drape
-✓ NO ARTIFACTS: No distortions, stretching, or glitches
-
-If ANY guardrail fails:
-→ DO NOT generate output
-→ RETURN ERROR with detailed failure reason
-→ NEVER produce “close enough” results
-
-──────────────────────────────────────────────
-🎯 FINAL GOAL
-──────────────────────────────────────────────
-The user must appear wearing the exact product garment,
-with front correctly determined via neck/collar detection,
-natural neckline alignment, and perfect visual fidelity.
-`.trim();
+OUTPUT:
+Generate a single high-quality image showing the user wearing the exact product garment with perfect visual fidelity.`.trim();
 }
 
 function safePickGeneratedImage(resp) {
-  // Estrategia 1: Buscar en candidates[0].content.parts
+  // Estrategia 1: Buscar en candidates[0].content.parts (formato estándar)
   try {
     const cand = resp?.candidates?.[0];
     if (cand) {
-      // Intentar diferentes estructuras de content
       const content = cand.content || cand?.content?.[0];
       if (content) {
         const parts = content.parts || content?.parts || [];
         for (const p of parts) {
-          // Buscar inlineData (formato nuevo)
+          // Formato nuevo: inlineData
           if (p?.inlineData?.data && typeof p.inlineData.data === 'string' && p.inlineData.data.length > 100) {
             log('✅ Imagen encontrada en candidates[0].content.parts[].inlineData.data');
             return p.inlineData.data;
           }
-          // Buscar inline_data (formato alternativo)
+          // Formato alternativo: inline_data
           if (p?.inline_data?.data && typeof p.inline_data.data === 'string' && p.inline_data.data.length > 100) {
             log('✅ Imagen encontrada en candidates[0].content.parts[].inline_data.data');
             return p.inline_data.data;
@@ -251,8 +181,8 @@ export default async function handler(req, res) {
   const API_KEY = process.env.GOOGLE_AI_API_KEY;
   if (!API_KEY) return res.status(500).json({ success: false, error: 'Falta GOOGLE_AI_API_KEY' });
 
-  // Logs clave (limitados en prod)
-  log('INIT', { method: req.method, url: req.url });
+  log('INIT', { method: req.method, url: req.url, model: MODEL_NAME });
+  
   if (IS_DEV) {
     log('Headers:', req.headers);
     log('Body keys:', Object.keys(req.body || {}));
@@ -265,42 +195,39 @@ export default async function handler(req, res) {
 
     if (!userImage) return res.status(400).json({ success: false, error: 'No se recibió imagen del usuario' });
 
-    // Unificar imágenes de producto
+    // Unificar imágenes de producto (máximo 3 según el frontend)
     let productImagesArray = [];
-    if (Array.isArray(productImages) && productImages.length) productImagesArray = productImages;
-    else if (productImage) productImagesArray = [productImage];
+    if (Array.isArray(productImages) && productImages.length) {
+      productImagesArray = productImages.slice(0, 3); // Limitar a 3 imágenes
+    } else if (productImage) {
+      productImagesArray = [productImage];
+    }
 
     const selectedOrientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
 
-    // Parse/normalize user image (espera data URL)
+    // Parse/normalize user image
     const parsedUser = parseDataUrl(userImage);
     if (!parsedUser) {
       return res.status(400).json({ success: false, error: 'userImage debe ser una data URL base64 (data:image/...;base64,...)' });
     }
+
     const processedUserImage = await normalizeToJpegBuffer(parsedUser.base64);
 
-    // Texto de ayuda para el prompt respecto al índice relativo
-    const productImagesCount = productImagesArray.length;
-    const productImagesText =
-      productImagesCount === 0 ? 'no product images (reject if none match)' :
-      productImagesCount === 1 ? 'the second image' :
-      `images 2 through ${productImagesCount + 1}`;
-
-    // PROMPT unificado (NO TOCAR)
+    // PROMPT mejorado (más simple, el modelo hace el "Thinking" automáticamente)
     const prompt = buildPrompt({
-      productImagesCount,
-      productImagesText,
+      productImagesCount: productImagesArray.length,
       userOrientation: selectedOrientation,
       size,
     });
 
-    // Partes: prompt + persona + productos
+    // Construir partes según la nueva documentación de Gemini
+    // Formato: [{ text: prompt }, { inlineData: { mimeType, data } }, ...]
     const parts = [
       { text: prompt },
       { inlineData: { mimeType: 'image/jpeg', data: processedUserImage.toString('base64') } },
     ];
 
-    // Validaciones finales de tus cambios (4 MB c/u, 15 MB total, formatos soportados)
+    // Validaciones y normalización de imágenes de producto
     const maxImageSizeMB = 4;
     const maxTotalSizeMB = 15;
     let totalMB = processedUserImage.length / 1024 / 1024;
@@ -308,21 +235,39 @@ export default async function handler(req, res) {
     for (let i = 0; i < productImagesArray.length; i++) {
       const raw = productImagesArray[i];
       try {
-        if (!raw || typeof raw !== 'string') { warn(`productImages[${i}] inválida (no string)`); continue; }
+        if (!raw || typeof raw !== 'string') { 
+          warn(`productImages[${i}] inválida (no string)`); 
+          continue; 
+        }
+
         const parsed = parseDataUrl(raw);
-        if (!parsed) { warn(`productImages[${i}] no es data URL válida`); continue; }
+        if (!parsed) { 
+          warn(`productImages[${i}] no es data URL válida`); 
+          continue; 
+        }
 
         const supported = /^(image\/)(jpeg|jpg|png|webp)$/i.test(parsed.mime);
-        if (!supported) { warn(`productImages[${i}] formato no soportado: ${parsed.mime}`); continue; }
+        if (!supported) { 
+          warn(`productImages[${i}] formato no soportado: ${parsed.mime}`); 
+          continue; 
+        }
 
         // Calcular tamaño aprox del base64 (antes de normalizar)
         const approxMB = parsed.base64.length / 1024 / 1024;
-        if (approxMB > maxImageSizeMB) { warn(`productImages[${i}] > ${maxImageSizeMB}MB (${approxMB.toFixed(2)} MB)`); continue; }
+        if (approxMB > maxImageSizeMB) { 
+          warn(`productImages[${i}] > ${maxImageSizeMB}MB (${approxMB.toFixed(2)} MB)`); 
+          continue; 
+        }
 
-        // Normalizamos a jpeg para coherencia
+        // Normalizar a jpeg para coherencia
         const buf = await normalizeToJpegBuffer(parsed.base64);
         totalMB += buf.length / 1024 / 1024;
-        if (totalMB > maxTotalSizeMB) { warn(`Total imágenes > ${maxTotalSizeMB}MB. Se omite productImages[${i}]`); totalMB -= buf.length / 1024 / 1024; continue; }
+
+        if (totalMB > maxTotalSizeMB) { 
+          warn(`Total imágenes > ${maxTotalSizeMB}MB. Se omite productImages[${i}]`); 
+          totalMB -= buf.length / 1024 / 1024; 
+          continue; 
+        }
 
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: buf.toString('base64') } });
         log(`+ producto[${i}] OK (${(buf.length/1024).toFixed(2)} KB)`);
@@ -334,22 +279,41 @@ export default async function handler(req, res) {
     log(`Parts a enviar: ${parts.length} | total aprox MB: ${totalMB.toFixed(2)} | orientation=${selectedOrientation} | size=${size || 'M'}`);
     log(`Parts breakdown: prompt=${parts[0]?.text ? 'SÍ' : 'NO'} | userImage=${parts[1]?.inlineData ? 'SÍ' : 'NO'} | productImages=${parts.length - 2} imágenes`);
 
-    // Init modelo
+    // Inicializar modelo según nueva documentación
     const genAI = new GoogleGenerativeAI(API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-image' });
+    
+    // Usar generateContent con el formato correcto según la nueva documentación
+    // El modelo gemini-3-pro-image-preview tiene "Thinking" por defecto para mejor análisis
+    const model = genAI.getGenerativeModel({ 
+      model: MODEL_NAME,
+      // Configuración opcional para mejorar la generación
+      generationConfig: {
+        temperature: 0.4, // Más determinístico para mejor precisión
+        topP: 0.95,
+        topK: 40,
+      }
+    });
 
-    // Llamada
+    // Llamada según nueva documentación
     let result, response;
     try {
-      log('📤 Enviando solicitud a Google AI...');
+      log('📤 Enviando solicitud a Google AI (Gemini Image Generation)...');
       const requestStartTime = Date.now();
-      result = await model.generateContent({ contents: [{ role: 'user', parts }] });
+
+      // Formato según nueva documentación: contents con array de parts
+      result = await model.generateContent({ 
+        contents: [{ 
+          role: 'user', 
+          parts: parts 
+        }] 
+      });
+
       response = await result.response;
       const requestDuration = Date.now() - requestStartTime;
       log(`✅ Respuesta recibida de Google AI en ${requestDuration}ms`);
-      
+
       if (!response) throw new Error('Sin respuesta de Gemini');
-      
+
       // Log básico de la estructura de la respuesta
       log('Response structure:', {
         hasCandidates: !!response.candidates,
@@ -357,11 +321,12 @@ export default async function handler(req, res) {
         firstCandidateHasContent: !!response.candidates?.[0]?.content,
         firstCandidatePartsCount: response.candidates?.[0]?.content?.parts?.length || 0
       });
-      
+
       // Verificar si hay bloqueos de seguridad o errores
       if (response.candidates?.[0]?.finishReason) {
         const finishReason = response.candidates[0].finishReason;
         log(`Finish reason: ${finishReason}`);
+        
         if (finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS') {
           warn(`⚠️ Finish reason inesperado: ${finishReason}`);
           if (finishReason === 'SAFETY') {
@@ -372,7 +337,7 @@ export default async function handler(req, res) {
           }
         }
       }
-      
+
       // Verificar si hay bloqueos de seguridad en otros lugares
       if (response.promptFeedback) {
         log('Prompt feedback:', response.promptFeedback);
@@ -382,7 +347,7 @@ export default async function handler(req, res) {
         }
       }
     } catch (aiError) {
-      // Clasificación de errores (tus códigos)
+      // Clasificación de errores
       const msg = aiError?.message || '';
       if (msg.includes('SAFETY')) throw new Error('Contenido bloqueado por filtros de seguridad de Google AI');
       if (msg.includes('QUOTA')) throw new Error('Límite de cuota de Google AI excedido. Intenta más tarde.');
@@ -392,6 +357,7 @@ export default async function handler(req, res) {
 
     // Extraer imagen generada
     const imageBase64 = safePickGeneratedImage(response);
+    
     if (!imageBase64 || typeof imageBase64 !== 'string' || imageBase64.length < 100) {
       // Log detallado de la respuesta para diagnóstico
       log('⚠️ No se pudo extraer imagen de la respuesta de Google AI');
@@ -413,8 +379,8 @@ export default async function handler(req, res) {
         hasOutput: !!response?.output,
         outputLength: response?.output?.length || 0
       });
-      
-      // Si hay texto en la respuesta, loguearlo (puede ser un error o explicación de la IA)
+
+      // Si hay texto en la respuesta, loguearlo
       if (response?.candidates?.[0]?.content?.parts) {
         const textParts = response.candidates[0].content.parts.filter(p => p?.text);
         if (textParts.length > 0) {
@@ -424,25 +390,28 @@ export default async function handler(req, res) {
           });
         }
       }
-      
+
       if (IS_DEV) {
         log('Respuesta cruda completa:', JSON.stringify(response, null, 2));
       }
+      
       throw new Error('No se pudo extraer la imagen generada (imageData vacío o inválido). La IA puede haber retornado texto en lugar de una imagen.');
     }
 
-    log('Imagen generada OK');
+    log('✅ Imagen generada exitosamente');
+    
     return res.json({
       success: true,
       description: 'Imagen generada exitosamente con IA',
       generatedImage: `data:image/jpeg;base64,${imageBase64}`,
       size: size || 'M',
       orientation: selectedOrientation,
+      model: MODEL_NAME,
       timestamp: new Date().toISOString(),
     });
 
   } catch (error) {
-    // Diagnóstico extendido (tus campos)
+    // Diagnóstico extendido
     const body = req.body || {};
     const hasUser = !!body.userImage;
     const userLen = typeof body.userImage === 'string' ? body.userImage.length : 0;
@@ -475,6 +444,7 @@ export default async function handler(req, res) {
           errorDetails: errorDescription,
         });
       }
+
       return res.json({
         success: true,
         description: 'Imagen procesada (modo fallback)',
@@ -499,4 +469,6 @@ export default async function handler(req, res) {
       });
     }
   }
-}    
+}
+
+

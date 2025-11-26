@@ -297,7 +297,7 @@ export default async function handler(req, res) {
       throw new Error('Failed to extract generated image from Gemini response');
     }
     
-    log('✅ Try-on completed successfully');
+    log('✅ Try-on completed successfullyy');
     
     return res.json({
       success: true,

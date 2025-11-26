@@ -57,7 +57,7 @@ async function normalizeToJpegBuffer(base64) {
 }
 
 // =======================
-// PROMPT MEJORADO - Más simple y directo, aprovechando el "Thinking" del modelo
+// PROMPT MEJORADO - Detección mejorada de orientación
 // =======================
 function buildPrompt({ productImagesCount, userOrientation, size }) {
   const orientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
@@ -67,32 +67,61 @@ function buildPrompt({ productImagesCount, userOrientation, size }) {
 
 TASK: Dress the user (first image) with the exact garment from the product images (remaining images).
 
-ANALYSIS PROCESS:
-1. Identify which image is the USER (person to dress) vs PRODUCT images (garment photos)
-2. Analyze all product images to determine:
-   - Which side is FRONT (look for collars, necklines, buttons, logos, graphics)
-   - Which side is BACK (look for tags, simpler design, no collar/buttons)
-   - If product images show models wearing the garment, use those as reference for front/back
-3. Match the garment's FRONT orientation to dress the user correctly
+⚠️ CRITICAL: ORIENTATION DETECTION RULES
 
-CRITICAL RULES:
-- The first image is always the USER (person to dress)
-- Product images may show: the garment alone, models wearing it, or both
-- If a collar, neckline, buttons, or graphics are visible → that's the FRONT
-- If no collar/buttons and simpler design → that's likely the BACK
-- When in doubt, prioritize model photos showing the garment being worn
+IMPORTANT: The order of product images does NOT indicate which side is front or back. You must analyze each image carefully.
+
+STEP 1: Identify User vs Product Images
+- The FIRST image is always the USER (person to dress)
+- All remaining images are PRODUCT images (the garment)
+
+STEP 2: Analyze Product Images for Orientation
+
+A) Look for photos of PEOPLE/MODELS wearing the garment:
+   - If you see a person wearing the garment facing the camera (front view):
+     * This shows the FRONT of the garment
+     * Note the design/graphics visible on the FRONT
+     * Compare this design with other product images
+   
+   - If a product image shows a person wearing the garment from the front AND the design/graphics are DIFFERENT from the first product image:
+     * Then the FIRST product image is likely the BACK of the garment
+     * Use the model photo to identify the correct FRONT design
+
+B) Analyze garment-only images (no person):
+   - FRONT indicators: collars, necklines, buttons, zippers, main graphics/logos, text, complex designs
+   - BACK indicators: simpler design, tags, no collar/buttons, different graphics than front
+   - If you see a collar or neckline opening → that side is the FRONT
+   - If you see tags or a simpler design → that side is likely the BACK
+
+C) Cross-reference logic:
+   - If product images include BOTH a model photo (front view) AND garment-only photos:
+     * Compare the design visible on the model's chest/front with garment-only images
+     * If the first garment-only image has a DIFFERENT design than what's on the model's front:
+       → The first image is the BACK, use the model photo to find the FRONT
+     * If designs match → the first image is likely the FRONT
+
+STEP 3: Determine Correct FRONT to Use
+- Prioritize model photos showing the garment being worn correctly
+- If model photos show a different design than garment-only images, trust the model photos
+- Always use the FRONT side (as determined above) to dress the user
 
 DRESSING INSTRUCTIONS:
 - Replace ONLY the user's clothing with the product garment
-- Use the FRONT side of the garment (as determined from product images)
+- Use the CORRECT FRONT side of the garment (determined through analysis above)
 - Preserve: user's face, pose, expression, background, lighting
-- Match colors, patterns, logos, and text with 100% accuracy
+- Match colors, patterns, logos, graphics, and text with 100% accuracy from the FRONT side
 - Ensure natural neckline alignment and proper fit
 - Size: ${sizeInstruction}
 - Make it photorealistic with natural fabric drape
 
+VERIFICATION BEFORE GENERATING:
+✓ Correctly identified which product images show FRONT vs BACK
+✓ Using the FRONT design (not the back) to dress the user
+✓ Design/graphics match what should be on the front of the garment
+✓ User's pose and orientation match the garment application
+
 OUTPUT:
-Generate a single high-quality image showing the user wearing the exact product garment with perfect visual fidelity.`.trim();
+Generate a single high-quality image showing the user wearing the exact product garment (FRONT side) with perfect visual fidelity.`.trim();
 }
 
 function safePickGeneratedImage(resp) {
@@ -221,6 +250,9 @@ export default async function handler(req, res) {
     });
 
     // Construir partes según la nueva documentación de Gemini
+    // IMPORTANTE: El orden de las imágenes es:
+    // 1. Primera imagen: USER (persona a vestir)
+    // 2. Siguientes imágenes: PRODUCT (pueden estar en cualquier orden, no asumir que la primera es el frente)
     // Formato: [{ text: prompt }, { inlineData: { mimeType, data } }, ...]
     const parts = [
       { text: prompt },
@@ -278,6 +310,7 @@ export default async function handler(req, res) {
 
     log(`Parts a enviar: ${parts.length} | total aprox MB: ${totalMB.toFixed(2)} | orientation=${selectedOrientation} | size=${size || 'M'}`);
     log(`Parts breakdown: prompt=${parts[0]?.text ? 'SÍ' : 'NO'} | userImage=${parts[1]?.inlineData ? 'SÍ' : 'NO'} | productImages=${parts.length - 2} imágenes`);
+    log(`⚠️ IMPORTANTE: El orden de las imágenes NO indica frente/espalda. El modelo debe analizar cada imagen para determinar la orientación correcta.`);
 
     // Inicializar modelo según nueva documentación
     const genAI = new GoogleGenerativeAI(API_KEY);
@@ -470,5 +503,4 @@ export default async function handler(req, res) {
     }
   }
 }
-
 

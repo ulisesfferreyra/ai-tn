@@ -1,4 +1,5 @@
 // Enhanced handler with OpenAI pre-analysis + Gemini try-on
+// UPDATED: Includes FIT analysis and critical guardrails
 
 import sharp from 'sharp';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -14,7 +15,7 @@ const warn = (...a) => console.warn('[TRY-ON]', ...a);
 const err = (...a) => console.error('[TRY-ON]', ...a);
 
 // ═══════════════════════════════════════════════════════════════════
-// STAGE 1: OpenAI Image Analysis
+// STAGE 1: OpenAI Image Analysis (UPDATED WITH FIT ANALYSIS)
 // ═══════════════════════════════════════════════════════════════════
 
 async function analyzeProductImagesWithOpenAI(productImages) {
@@ -22,30 +23,40 @@ async function analyzeProductImagesWithOpenAI(productImages) {
   
   log('🔍 Stage 1: Analyzing product images with OpenAI...');
   
-  const analysisPrompt = `You are an expert fashion image analyst. Analyze these garment product images and determine their orientation.
+  const analysisPrompt = `You will receive multiple images of a clothing product (garment).
 
-RULES:
-- Image showing main graphics/logos/text/buttons/zippers/collar = FRONT
-- Image with simpler design/tags/no collar = BACK  
-- Image showing person wearing garment facing camera = MODEL_FRONT
-- Image showing person's back = MODEL_BACK
+Your task: Identify the FRONT view AND analyze the garment's FIT/STYLE.
 
-Respond ONLY with valid JSON (no markdown):
+ANALYSIS PROCESS:
+
+1. PRIORITIZE images showing a PERSON/MODEL wearing the garment
+   - The design visible on their CHEST = FRONT
+   - CRITICAL: Observe HOW the garment fits on the model:
+     * Sleeve length (short, regular, long, oversized)
+     * Body fit (tight, regular, loose, oversized, boxy)
+     * Overall length (cropped, regular, long, oversized)
+   - This fit observation is THE REFERENCE, regardless of labeled size
+
+2. If NO person in any image:
+   - Analyze garment structure: neckline, collar, button/zipper position
+   - Cannot determine fit style without human reference
+
+3. Return the front image index AND fit characteristics
+
+Return ONLY valid JSON (no additional text, no markdown):
 {
-  "images": [
-    {
-      "index": 0,
-      "orientation": "front" | "back" | "model_front" | "model_back" | "side" | "unknown",
-      "confidence": "high" | "medium" | "low",
-      "hasGraphics": true/false,
-      "hasText": true/false,
-      "description": "Brief description"
-    }
-  ],
-  "frontImageIndex": 0,
-  "backImageIndex": 1,
-  "reasoning": "Why you classified them this way"
-}`;
+  "front_image_index": <number>,
+  "has_model": <true/false>,
+  "fit_style": {
+    "sleeve_length": "<short/regular/long/oversized>",
+    "body_fit": "<tight/regular/loose/oversized/boxy>",
+    "garment_length": "<cropped/regular/long/oversized>"
+  },
+  "reasoning": "<brief explanation>",
+  "confidence": "<high/medium/low>"
+}
+
+If no model present, set has_model to false and fit_style to null.`;
 
   try {
     const messages = [
@@ -65,10 +76,10 @@ Respond ONLY with valid JSON (no markdown):
     ];
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
+      model: "gpt-4o",
       messages,
       max_tokens: 1500,
-      temperature: 0.3, // Lower for more deterministic analysis
+      temperature: 0.3,
     });
 
     const content = response.choices[0].message.content;
@@ -78,9 +89,10 @@ Respond ONLY with valid JSON (no markdown):
     const analysis = JSON.parse(jsonStr);
     
     log('✅ OpenAI Analysis:', {
-      imagesAnalyzed: analysis.images.length,
-      frontIndex: analysis.frontImageIndex,
-      backIndex: analysis.backImageIndex,
+      imagesAnalyzed: productImages.length,
+      frontIndex: analysis.front_image_index,
+      hasModel: analysis.has_model,
+      fitStyle: analysis.fit_style,
       reasoning: analysis.reasoning
     });
     
@@ -88,66 +100,98 @@ Respond ONLY with valid JSON (no markdown):
     
   } catch (error) {
     warn('⚠️ OpenAI analysis failed:', error.message);
-    // Fallback: assume first image is front
+    // Fallback: assume first image is front, no model detected
     return {
-      images: productImages.map((_, i) => ({
-        index: i,
-        orientation: i === 0 ? 'front' : 'unknown',
-        confidence: 'low',
-        hasGraphics: false,
-        hasText: false,
-        description: 'Analysis failed, using defaults'
-      })),
-      frontImageIndex: 0,
-      backImageIndex: productImages.length > 1 ? 1 : null,
+      front_image_index: 0,
+      has_model: false,
+      fit_style: null,
       reasoning: 'Fallback due to analysis error',
+      confidence: 'low',
       error: error.message
     };
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// STAGE 2: Simplified Gemini Prompt (No Orientation Detection Needed)
+// STAGE 2: Updated Gemini Prompt (With FIT scenarios and GUARDRAILS)
 // ═══════════════════════════════════════════════════════════════════
 
-function buildSimplifiedPrompt({ size, frontImageIndex, analysis }) {
+function buildGeminiPrompt({ size, analysis }) {
   const SIZE_MAP = {
-    XS: 'very tight, form-fitting',
-    S: 'fitted, slightly snug',
-    M: 'standard fit, comfortable',
-    L: 'relaxed fit, slightly loose',
-    XL: 'oversized, loose-fitting',
-    XXL: 'very oversized, very baggy',
+    XS: 'Very fitted, tight, form-fitting',
+    S: 'Fitted, slightly snug, close to body',
+    M: 'Standard fit, comfortable, natural',
+    L: 'Relaxed fit, slightly loose, comfortable',
+    XL: 'Oversized, loose-fitting, baggy',
+    XXL: 'Very oversized, very loose, very baggy',
   };
   
-  const sizeDesc = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
+  const sizeLabel = size?.toUpperCase?.() || 'M';
+  const has_model = analysis.has_model;
+  const fit_style = analysis.fit_style;
   
-  return `You are an expert AI fashion try-on system.
+  let fitDescription = '';
+  if (has_model && fit_style) {
+    fitDescription = `Sleeves: ${fit_style.sleeve_length}, Body: ${fit_style.body_fit}, Length: ${fit_style.garment_length}`;
+  }
+  
+  const fitInstructions = has_model ? `
+SCENARIO A: Product has model reference
+- IGNORE the size label (${sizeLabel})
+- REPLICATE EXACTLY how the garment fits on the model in product images
+- Match sleeve length, body fit, and overall length PRECISELY as shown on model
+- If model shows oversized fit → User gets oversized fit
+- If model shows cropped sleeves → User gets cropped sleeves
+- The model's fit is THE ONLY reference for sizing
+- Reference fit: ${fitDescription}
+` : `
+SCENARIO B: No model reference
+- Apply standard size logic for ${sizeLabel}:
+  * XS: Very fitted, tight, form-fitting
+  * S: Fitted, slightly snug, close to body
+  * M: Standard fit, comfortable, natural
+  * L: Relaxed fit, slightly loose, comfortable
+  * XL: Oversized, loose-fitting, baggy
+  * XXL: Very oversized, very loose, very baggy
+`;
+  
+  return `DRESS THE USER WITH THE EXACT GARMENT.
 
-TASK: Dress the user (Image 1) with the garment from the FRONT view product image.
+You will receive:
+1. User's photo (person to dress)
+2. One or more product garment images (FRONT view pre-identified)
+${has_model ? `3. REFERENCE: Product shows model wearing garment with this fit: ${fitDescription}` : ''}
 
-IMAGES PROVIDED (PRE-ANALYZED):
-- Image 1: USER to dress
-- Image ${frontImageIndex + 2}: FRONT of garment (verified by pre-analysis)
-${analysis.backImageIndex !== null ? `- Image ${analysis.backImageIndex + 2}: BACK of garment (reference only)` : ''}
+CRITICAL FIT RULES:
+${fitInstructions}
 
-CRITICAL INSTRUCTIONS:
-✓ Use Image ${frontImageIndex + 2} as the source for the garment design
-✓ This image has been verified to show the FRONT of the garment
-✓ Match ALL details: colors, patterns, logos, graphics, text with 100% accuracy
-✓ Preserve user's face, pose, expression, background, lighting
-✓ Size: ${sizeDesc}
-✓ Natural fabric drape and realistic lighting
+YOUR TASK:
+- Replace ONLY the user's clothing with this garment
+- Keep EVERYTHING else ABSOLUTELY IDENTICAL: face, body, pose, expression, background, body position
+- Apply garment with the correct fit (prioritizing model reference if available)
+- Match colors, patterns, graphics, text, and placement with 100% accuracy
 
-ORIENTATION PRE-ANALYSIS RESULTS:
-${JSON.stringify(analysis, null, 2)}
+MANDATORY GUARDRAILS - CRITICAL - NO EXCEPTIONS:
 
-OUTPUT:
-Generate a photorealistic image of the user wearing the garment (front view) with perfect visual fidelity.`;
+✓ POSE PRESERVATION: User's body position, arms, hands, stance ABSOLUTELY IDENTICAL to input (THIS IS CRITICAL)
+✓ FACE PRESERVATION: User's face COMPLETELY UNCHANGED and recognizable
+✓ BACKGROUND PRESERVATION: Background IDENTICAL to input
+✓ GARMENT PRESENCE: Product garment clearly visible on user
+✓ FIT ACCURACY: ${has_model ? 'Garment fits user EXACTLY as it fits the model' : 'Garment fits according to size ' + sizeLabel}
+✓ DESIGN ACCURACY: 100% match (colors, patterns, graphics, text)
+✓ REALISM: Photorealistic, natural lighting, proper fabric drape
+✓ NO ARTIFACTS: No distortions, glitches, unrealistic elements
+
+IF ANY SINGLE GUARDRAIL FAILS:
+→ DO NOT GENERATE OUTPUT
+→ RETURN ERROR CODE
+→ NEVER send partial or "close enough" results
+
+RESULT: User in EXACT same pose wearing garment with EXACT fit as model (or size-appropriate if no model), zero errors.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Helper Functions (from original code)
+// Helper Functions
 // ═══════════════════════════════════════════════════════════════════
 
 function parseDataUrl(dataUrl) {
@@ -187,7 +231,7 @@ function safePickGeneratedImage(resp) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Main Handler - Two-Stage Pipeline
+// Main Handler - Two-Stage Pipeline with FIT Analysis
 // ═══════════════════════════════════════════════════════════════════
 
 export default async function handler(req, res) {
@@ -216,15 +260,15 @@ export default async function handler(req, res) {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // STAGE 1: OpenAI Analysis
+    // STAGE 1: OpenAI Analysis (with FIT detection)
     // ═══════════════════════════════════════════════════════════════
     
-    const analysis = await analyzeProductImagesWithOpenAI(productImages.slice(0, 3));
+    const analysis = await analyzeProductImagesWithOpenAI(productImages.slice(0, 5));
     
     // Validate analysis results
-    if (analysis.frontImageIndex === undefined || analysis.frontImageIndex === null) {
+    if (analysis.front_image_index === undefined || analysis.front_image_index === null) {
       warn('⚠️ No front image identified, using first image as fallback');
-      analysis.frontImageIndex = 0;
+      analysis.front_image_index = 0;
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -241,13 +285,13 @@ export default async function handler(req, res) {
     const userBuffer = await normalizeToJpegBuffer(parsedUser.base64);
     
     // Reorder product images: front first, then others
-    const frontImage = productImages[analysis.frontImageIndex];
-    const otherImages = productImages.filter((_, i) => i !== analysis.frontImageIndex);
+    const frontImage = productImages[analysis.front_image_index];
+    const otherImages = productImages.filter((_, i) => i !== analysis.front_image_index);
     const orderedProductImages = [frontImage, ...otherImages];
     
     // Process product images
     const productBuffers = [];
-    for (let i = 0; i < orderedProductImages.length; i++) {
+    for (let i = 0; i < Math.min(orderedProductImages.length, 5); i++) {
       const parsed = parseDataUrl(orderedProductImages[i]);
       if (parsed) {
         const buf = await normalizeToJpegBuffer(parsed.base64);
@@ -255,10 +299,9 @@ export default async function handler(req, res) {
       }
     }
     
-    // Build simplified prompt (no orientation detection needed)
-    const prompt = buildSimplifiedPrompt({
+    // Build prompt with FIT scenarios
+    const prompt = buildGeminiPrompt({
       size,
-      frontImageIndex: 0, // Now front is always first after reordering
       analysis
     });
     
@@ -272,6 +315,7 @@ export default async function handler(req, res) {
     ];
     
     log(`📤 Sending to Gemini: 1 user image + ${productBuffers.length} product images (front-ordered)`);
+    log(`📊 FIT Analysis: has_model=${analysis.has_model}, fit=${JSON.stringify(analysis.fit_style)}`);
     
     // ═══════════════════════════════════════════════════════════════
     // STAGE 3: Gemini Try-On Generation
@@ -297,14 +341,16 @@ export default async function handler(req, res) {
       throw new Error('Failed to extract generated image from Gemini response');
     }
     
-    log('✅ Try-on completed successfullyy');
+    log('✅ Try-on completed successfully');
     
     return res.json({
       success: true,
       generatedImage: `data:image/jpeg;base64,${imageBase64}`,
       analysis: {
-        frontImageIndex: analysis.frontImageIndex,
-        confidence: analysis.images[analysis.frontImageIndex]?.confidence,
+        frontImageIndex: analysis.front_image_index,
+        hasModel: analysis.has_model,
+        fitStyle: analysis.fit_style,
+        confidence: analysis.confidence,
         reasoning: analysis.reasoning
       },
       size: size || 'M',
@@ -320,5 +366,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
-

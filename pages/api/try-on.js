@@ -27,21 +27,30 @@ async function analyzeProductImagesWithOpenAI(productImages) {
 
 Your task: Identify the FRONT view AND analyze the garment's FIT/STYLE.
 
-ANALYSIS PROCESS:
+CRITICAL - FOLLOW THIS EXACT SEQUENCE:
 
-1. PRIORITIZE images showing a PERSON/MODEL wearing the garment
-   - The design visible on their CHEST = FRONT
-   - CRITICAL: Observe HOW the garment fits on the model:
-     * Sleeve length (short, regular, long, oversized)
-     * Body fit (tight, regular, loose, oversized, boxy)
-     * Overall length (cropped, regular, long, oversized)
-   - This fit observation is THE REFERENCE, regardless of labeled size
+STEP 1: SCAN all images for HUMANS/MODELS wearing the garment
+- Look for any person wearing the garment
+- A person can be facing camera OR facing away
 
-2. If NO person in any image:
-   - Analyze garment structure: neckline, collar, button/zipper position
-   - Cannot determine fit style without human reference
+STEP 2: IF you found a person/model:
+- Identify which image shows the person FACING THE CAMERA
+- The design visible on their CHEST (front of their body) = FRONT of garment
+- DO NOT use design size/complexity to determine front
+- DO NOT assume large graphics = front (they can be on back)
+- ONLY use: "What is this person wearing on their CHEST when facing camera?"
 
-3. Return the front image index AND fit characteristics
+STEP 3: MEASURE the FIT on the model:
+- Sleeve length: How far do sleeves extend? (short/regular/long/oversized)
+- Body fit: How loose is it on the model's torso? (tight/regular/loose/oversized/boxy)
+- Garment length: Where does it end on the model? (cropped/regular/long/oversized)
+- This is THE ABSOLUTE REFERENCE for fit, ignore any size labels
+
+STEP 4: IF NO person in ANY image:
+- Analyze garment structure: neckline opening, collar position
+- Set has_model = false, fit_style = null
+
+STEP 5: Return results
 
 Return ONLY valid JSON (no additional text, no markdown):
 {
@@ -52,10 +61,11 @@ Return ONLY valid JSON (no additional text, no markdown):
     "body_fit": "<tight/regular/loose/oversized/boxy>",
     "garment_length": "<cropped/regular/long/oversized>"
   },
-  "reasoning": "<brief explanation>",
+  "reasoning": "<explain: did you find a person? what's on their chest?>",
   "confidence": "<high/medium/low>"
 }
 
+CRITICAL: If you found a person, has_model MUST be true and fit_style MUST be populated.
 If no model present, set has_model to false and fit_style to null.`;
 
   try {
@@ -136,58 +146,84 @@ function buildGeminiPrompt({ size, analysis }) {
   }
  
   const fitInstructions = has_model ? `
-SCENARIO A: Product has model reference
-- IGNORE the size label (${sizeLabel})
-- REPLICATE EXACTLY how the garment fits on the model in product images
-- Match sleeve length, body fit, and overall length PRECISELY as shown on model
-- If model shows oversized fit → User gets oversized fit
-- If model shows cropped sleeves → User gets cropped sleeves
-- The model's fit is THE ONLY reference for sizing
-- Reference fit: ${fitDescription}
+SCENARIO A: Product has model reference - CRITICAL FIT RULES
+
+FORBIDDEN ACTIONS:
+✗ DO NOT apply size logic for "${sizeLabel}"
+✗ DO NOT adjust the fit
+✗ DO NOT make it tighter or looser than the model
+✗ DO NOT shorten or lengthen sleeves
+✗ DO NOT change garment proportions
+
+MANDATORY ACTIONS:
+✓ COPY the EXACT fit from the model wearing the garment
+✓ Sleeve length on user = IDENTICAL to sleeve length on model
+✓ Body looseness on user = IDENTICAL to body looseness on model  
+✓ Garment length on user = IDENTICAL to garment length on model
+✓ If model shows oversized/baggy → user MUST get oversized/baggy
+✓ If model shows long sleeves → user MUST get long sleeves
+✓ If model shows loose torso → user MUST get loose torso
+
+REFERENCE FIT FROM MODEL:
+- Sleeves: ${fit_style.sleeve_length}
+- Body: ${fit_style.body_fit}
+- Length: ${fit_style.garment_length}
+
+REPLICATE THIS EXACT FIT. The model is showing you HOW this garment naturally fits. Do not "correct" or "adjust" it.
 ` : `
-SCENARIO B: No model reference
-- Apply standard size logic for ${sizeLabel}:
-  * XS: Very fitted, tight, form-fitting
-  * S: Fitted, slightly snug, close to body
-  * M: Standard fit, comfortable, natural
-  * L: Relaxed fit, slightly loose, comfortable
-  * XL: Oversized, loose-fitting, baggy
-  * XXL: Very oversized, very loose, very baggy
+SCENARIO B: No model reference - Apply size logic
+
+Since no human model is available, use standard sizing for ${sizeLabel}:
+- XS: Very fitted, tight, form-fitting
+- S: Fitted, slightly snug, close to body
+- M: Standard fit, comfortable, natural
+- L: Relaxed fit, slightly loose, comfortable
+- XL: Oversized, loose-fitting, baggy
+- XXL: Very oversized, very loose, very baggy
 `;
  
   return `DRESS THE USER WITH THE EXACT GARMENT.
 
 You will receive:
 1. User's photo (person to dress)
-2. One or more product garment images (FRONT view pre-identified)
-${has_model ? `3. REFERENCE: Product shows model wearing garment with this fit: ${fitDescription}` : ''}
+2. One or more product garment images (FRONT view pre-identified by analysis system)
+${has_model ? `3. REFERENCE: A model wearing this garment with fit: ${fitDescription}` : ''}
+
+CRITICAL ORIENTATION RULE:
+The product images have been PRE-ANALYZED. The FRONT view has been identified.
+- Use the design from the identified FRONT image
+- DO NOT mix front and back designs
+- DO NOT put back designs on the front
+- The garment orientation has been solved - just apply it correctly
 
 CRITICAL FIT RULES:
 ${fitInstructions}
 
 YOUR TASK:
 - Replace ONLY the user's clothing with this garment
-- Keep EVERYTHING else ABSOLUTELY IDENTICAL: face, body, pose, expression, background, body position
-- Apply garment with the correct fit (prioritizing model reference if available)
+- Keep EVERYTHING else ABSOLUTELY IDENTICAL: face, body, pose, expression, background, body position, arms, hands
+- Apply the FRONT design from the pre-identified image
+- ${has_model ? 'COPY THE EXACT FIT from the model (do not adjust, do not apply size logic)' : 'Apply size logic for ' + sizeLabel}
 - Match colors, patterns, graphics, text, and placement with 100% accuracy
 
-MANDATORY GUARDRAILS - CRITICAL - NO EXCEPTIONS:
+MANDATORY GUARDRAILS - ZERO TOLERANCE:
 
-✓ POSE PRESERVATION: User's body position, arms, hands, stance ABSOLUTELY IDENTICAL to input (THIS IS CRITICAL)
+✓ POSE PRESERVATION: User's body position, arms, hands, stance ABSOLUTELY IDENTICAL to input (CRITICAL - DO NOT CHANGE POSE)
 ✓ FACE PRESERVATION: User's face COMPLETELY UNCHANGED and recognizable
 ✓ BACKGROUND PRESERVATION: Background IDENTICAL to input
+✓ ORIENTATION ACCURACY: Front design on front (not back design on front)
 ✓ GARMENT PRESENCE: Product garment clearly visible on user
-✓ FIT ACCURACY: ${has_model ? 'Garment fits user EXACTLY as it fits the model' : 'Garment fits according to size ' + sizeLabel}
-✓ DESIGN ACCURACY: 100% match (colors, patterns, graphics, text)
+✓ FIT ACCURACY: ${has_model ? 'Garment fits user EXACTLY as it fits the model - same sleeve length, same looseness, same proportions' : 'Garment fits according to size ' + sizeLabel}
+✓ DESIGN ACCURACY: 100% match to FRONT view (colors, patterns, graphics, text, placement)
 ✓ REALISM: Photorealistic, natural lighting, proper fabric drape
 ✓ NO ARTIFACTS: No distortions, glitches, unrealistic elements
 
 IF ANY SINGLE GUARDRAIL FAILS:
 → DO NOT GENERATE OUTPUT
-→ RETURN ERROR CODE
+→ REFUSE TO GENERATE
 → NEVER send partial or "close enough" results
 
-RESULT: User in EXACT same pose wearing garment with EXACT fit as model (or size-appropriate if no model), zero errors.`;
+RESULT: User in EXACT same pose wearing garment with EXACT fit ${has_model ? 'as model shows' : 'for size ' + sizeLabel}, with CORRECT front orientation, zero errors.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════

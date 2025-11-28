@@ -20,9 +20,9 @@ const err = (...a) => console.error('[TRY-ON]', ...a);
 
 async function analyzeProductImagesWithOpenAI(productImages) {
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  
+ 
   log('🔍 Stage 1: Analyzing product images with OpenAI...');
-  
+ 
   const analysisPrompt = `You will receive multiple images of a clothing product (garment).
 
 Your task: Identify the FRONT view AND analyze the garment's FIT/STYLE.
@@ -66,9 +66,9 @@ If no model present, set has_model to false and fit_style to null.`;
           { type: "text", text: analysisPrompt },
           ...productImages.map(img => ({
             type: "image_url",
-            image_url: { 
+            image_url: {
               url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`,
-              detail: "high" 
+              detail: "high"
             }
           }))
         ]
@@ -83,11 +83,11 @@ If no model present, set has_model to false and fit_style to null.`;
     });
 
     const content = response.choices[0].message.content;
-    
+   
     // Clean markdown if present
     const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const analysis = JSON.parse(jsonStr);
-    
+   
     log('✅ OpenAI Analysis:', {
       imagesAnalyzed: productImages.length,
       frontIndex: analysis.front_image_index,
@@ -95,9 +95,9 @@ If no model present, set has_model to false and fit_style to null.`;
       fitStyle: analysis.fit_style,
       reasoning: analysis.reasoning
     });
-    
+   
     return analysis;
-    
+   
   } catch (error) {
     warn('⚠️ OpenAI analysis failed:', error.message);
     // Fallback: assume first image is front, no model detected
@@ -125,16 +125,16 @@ function buildGeminiPrompt({ size, analysis }) {
     XL: 'Oversized, loose-fitting, baggy',
     XXL: 'Very oversized, very loose, very baggy',
   };
-  
+ 
   const sizeLabel = size?.toUpperCase?.() || 'M';
   const has_model = analysis.has_model;
   const fit_style = analysis.fit_style;
-  
+ 
   let fitDescription = '';
   if (has_model && fit_style) {
     fitDescription = `Sleeves: ${fit_style.sleeve_length}, Body: ${fit_style.body_fit}, Length: ${fit_style.garment_length}`;
   }
-  
+ 
   const fitInstructions = has_model ? `
 SCENARIO A: Product has model reference
 - IGNORE the size label (${sizeLabel})
@@ -154,7 +154,7 @@ SCENARIO B: No model reference
   * XL: Oversized, loose-fitting, baggy
   * XXL: Very oversized, very loose, very baggy
 `;
-  
+ 
   return `DRESS THE USER WITH THE EXACT GARMENT.
 
 You will receive:
@@ -238,23 +238,23 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
+ 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const GOOGLE_API_KEY = process.env.GOOGLE_AI_API_KEY;
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-  
+ 
   if (!GOOGLE_API_KEY) return res.status(500).json({ error: 'Missing GOOGLE_AI_API_KEY' });
   if (!OPENAI_API_KEY) return res.status(500).json({ error: 'Missing OPENAI_API_KEY' });
 
   try {
     const { productImages, size, userImage } = req.body || {};
-    
+   
     if (!userImage) {
       return res.status(400).json({ error: 'Missing userImage' });
     }
-    
+   
     if (!productImages || !Array.isArray(productImages) || productImages.length === 0) {
       return res.status(400).json({ error: 'Missing productImages array' });
     }
@@ -262,9 +262,9 @@ export default async function handler(req, res) {
     // ═══════════════════════════════════════════════════════════════
     // STAGE 1: OpenAI Analysis (with FIT detection)
     // ═══════════════════════════════════════════════════════════════
-    
+   
     const analysis = await analyzeProductImagesWithOpenAI(productImages.slice(0, 5));
-    
+   
     // Validate analysis results
     if (analysis.front_image_index === undefined || analysis.front_image_index === null) {
       warn('⚠️ No front image identified, using first image as fallback');
@@ -274,21 +274,21 @@ export default async function handler(req, res) {
     // ═══════════════════════════════════════════════════════════════
     // STAGE 2: Prepare Images for Gemini
     // ═══════════════════════════════════════════════════════════════
-    
+   
     log('🎨 Stage 2: Preparing images for Gemini try-on...');
-    
+   
     // Process user image
     const parsedUser = parseDataUrl(userImage);
     if (!parsedUser) {
       return res.status(400).json({ error: 'Invalid userImage format' });
     }
     const userBuffer = await normalizeToJpegBuffer(parsedUser.base64);
-    
+   
     // Reorder product images: front first, then others
     const frontImage = productImages[analysis.front_image_index];
     const otherImages = productImages.filter((_, i) => i !== analysis.front_image_index);
     const orderedProductImages = [frontImage, ...otherImages];
-    
+   
     // Process product images
     const productBuffers = [];
     for (let i = 0; i < Math.min(orderedProductImages.length, 5); i++) {
@@ -298,13 +298,13 @@ export default async function handler(req, res) {
         productBuffers.push(buf);
       }
     }
-    
+   
     // Build prompt with FIT scenarios
     const prompt = buildGeminiPrompt({
       size,
       analysis
     });
-    
+   
     // Construct parts for Gemini
     const parts = [
       { text: prompt },
@@ -313,36 +313,36 @@ export default async function handler(req, res) {
         inlineData: { mimeType: 'image/jpeg', data: buf.toString('base64') }
       }))
     ];
-    
+   
     log(`📤 Sending to Gemini: 1 user image + ${productBuffers.length} product images (front-ordered)`);
     log(`📊 FIT Analysis: has_model=${analysis.has_model}, fit=${JSON.stringify(analysis.fit_style)}`);
-    
+   
     // ═══════════════════════════════════════════════════════════════
     // STAGE 3: Gemini Try-On Generation
     // ═══════════════════════════════════════════════════════════════
-    
+   
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
-    const model = genAI.getGenerativeModel({ 
+    const model = genAI.getGenerativeModel({
       model: 'gemini-2.0-flash-exp',
       generationConfig: {
         temperature: 0.4,
         topP: 0.95,
       }
     });
-    
-    const result = await model.generateContent({ 
-      contents: [{ role: 'user', parts }] 
+   
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts }]
     });
-    
+   
     const response = await result.response;
     const imageBase64 = safePickGeneratedImage(response);
-    
+   
     if (!imageBase64) {
       throw new Error('Failed to extract generated image from Gemini response');
     }
-    
+   
     log('✅ Try-on completed successfully');
-    
+   
     return res.json({
       success: true,
       generatedImage: `data:image/jpeg;base64,${imageBase64}`,
@@ -356,7 +356,7 @@ export default async function handler(req, res) {
       size: size || 'M',
       timestamp: new Date().toISOString()
     });
-    
+   
   } catch (error) {
     err('Error:', error.message);
     return res.status(500).json({

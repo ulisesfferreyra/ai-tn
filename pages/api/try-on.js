@@ -668,6 +668,12 @@ Analysis Confidence Level: ${confidence}`.trim();
 // Handler
 // ───────────────────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
+  // LOG MUY VISIBLE PARA CONFIRMAR QUE ESTE ARCHIVO SE ESTÁ EJECUTANDO
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('🔵 BACKEND-TRYON-IMPROVED.JS EJECUTÁNDOSE');
+  console.log('🔵 VERSIÓN CON requestId Y model EN RESPUESTAS');
+  console.log('═══════════════════════════════════════════════════════════════');
+  
   ensureCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });

@@ -19,7 +19,8 @@ export const config = {
 // Helpers
 // ───────────────────────────────────────────────────────────────────────────────
 const IS_DEV = process.env.NODE_ENV !== 'production';
-const log  = (...a) => IS_DEV && console.log('[TRY-ON]', ...a);
+// Logs siempre visibles para debugging (especialmente OpenAI y Nano Banana)
+const log  = (...a) => console.log('[TRY-ON]', ...a);
 const warn = (...a) => console.warn('[TRY-ON]', ...a);
 const err  = (...a) => console.error('[TRY-ON]', ...a);
 
@@ -271,18 +272,26 @@ function ensureCors(req, res) {
 // PASO 1: Análisis previo con OpenAI Vision para determinar qué imagen usar
 // ───────────────────────────────────────────────────────────────────────────────
 async function analyzeProductImages(userImageBase64, productImagesArray) {
-  log('🔍 PASO 1: Iniciando análisis con OpenAI Vision...');
-  log(`📸 Imágenes recibidas: 1 usuario + ${productImagesArray.length} producto`);
+  log('═══════════════════════════════════════════════════════════════');
+  log('🔍 INICIANDO ANÁLISIS CON OPENAI VISION');
+  log('═══════════════════════════════════════════════════════════════');
+  log(`📸 Imágenes recibidas: 1 usuario + ${productImagesArray?.length || 0} producto`);
+  log(`📏 Tamaño imagen usuario: ${userImageBase64 ? (userImageBase64.length / 1024).toFixed(2) + ' KB' : 'N/A'}`);
   
   if (!productImagesArray || productImagesArray.length === 0) {
+    warn('⚠️ No se recibieron imágenes del producto para análisis');
     return { useImageIndex: 0, reasoning: 'No product images provided' };
   }
 
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   if (!OPENAI_API_KEY) {
-    warn('⚠️ OPENAI_API_KEY no configurada, usando primera imagen del producto');
+    warn('⚠️ OPENAI_API_KEY no configurada en variables de entorno');
+    warn('⚠️ Usando primera imagen del producto sin análisis de OpenAI');
     return { useImageIndex: 0, reasoning: 'OpenAI API key not configured, using first product image' };
   }
+  
+  log(`✅ OPENAI_API_KEY encontrada (longitud: ${OPENAI_API_KEY.length} caracteres)`);
+  log(`🤖 Modelo OpenAI a usar: ${OPENAI_MODEL}`);
 
   const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
@@ -424,8 +433,16 @@ CRITICAL RULES:
       }
     }
 
-    log(`📤 Enviando ${messages[0].content.length - 1} imágenes a OpenAI Vision (1 usuario + ${productImagesArray.length} producto)...`);
+    const totalImages = messages[0].content.length - 1; // -1 porque el primero es el texto del prompt
+    log(`📤 Enviando ${totalImages} imágenes a OpenAI Vision (1 usuario + ${productImagesArray.length} producto)...`);
+    log(`📋 Configuración de la llamada:`);
+    log(`   - Modelo: ${OPENAI_MODEL}`);
+    log(`   - Temperature: 0.1`);
+    log(`   - Max tokens: 1500`);
+    log(`   - Response format: json_object`);
+    
     const openaiStartTime = Date.now();
+    log(`⏱️ Iniciando llamada a OpenAI API...`);
     
     const analysisResponse = await openai.chat.completions.create({
       model: OPENAI_MODEL,
@@ -439,17 +456,21 @@ CRITICAL RULES:
     const analysisText = analysisResponse.choices[0]?.message?.content;
     
     if (!analysisText) {
+      err('❌ OpenAI no retornó contenido en la respuesta');
       throw new Error('No response from OpenAI');
     }
 
-    log('✅ Análisis completado con OpenAI');
-    log(`⏱️ Tiempo de análisis: ${openaiDuration}ms`);
-    log('📋 Respuesta del análisis:', analysisText);
-    log('📊 Tokens usados:', {
-      prompt_tokens: analysisResponse.usage?.prompt_tokens || 'N/A',
-      completion_tokens: analysisResponse.usage?.completion_tokens || 'N/A',
-      total_tokens: analysisResponse.usage?.total_tokens || 'N/A'
-    });
+    log('═══════════════════════════════════════════════════════════════');
+    log('✅ ANÁLISIS COMPLETADO CON OPENAI VISION');
+    log('═══════════════════════════════════════════════════════════════');
+    log(`⏱️ Tiempo total de análisis: ${openaiDuration}ms (${(openaiDuration / 1000).toFixed(2)}s)`);
+    log('📊 Tokens usados:');
+    log(`   - Prompt tokens: ${analysisResponse.usage?.prompt_tokens || 'N/A'}`);
+    log(`   - Completion tokens: ${analysisResponse.usage?.completion_tokens || 'N/A'}`);
+    log(`   - Total tokens: ${analysisResponse.usage?.total_tokens || 'N/A'}`);
+    log('📋 Respuesta completa del análisis:');
+    log(analysisText);
+    log('═══════════════════════════════════════════════════════════════');
 
     // Parsear respuesta JSON
     let analysisData;

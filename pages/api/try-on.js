@@ -947,16 +947,44 @@ export default async function handler(req, res) {
     log(`✅ REQUEST COMPLETADO [${requestId}]`);
     log('═══════════════════════════════════════════════════════════════');
     
-    return res.json({
+    // Asegurar que requestId y model siempre estén presentes
+    const responseData = {
       success: true,
       description: 'Imagen generada exitosamente con IA',
       generatedImage: `data:image/jpeg;base64,${imageBase64}`,
       size: size || 'M',
       orientation: selectedOrientation,
-      model: GENERATION_MODEL,
-      requestId: requestId, // Incluir requestId en la respuesta para debugging
+      model: GENERATION_MODEL || 'gemini-2.5-flash-image', // Fallback por si acaso
+      requestId: requestId || `req_${Date.now()}_fallback`, // Fallback por si acaso
       timestamp: new Date().toISOString(),
+    };
+    
+    // Validar que los campos críticos estén presentes
+    if (!responseData.requestId) {
+      warn('⚠️ requestId no está definido, usando fallback');
+      responseData.requestId = `req_${Date.now()}_fallback`;
+    }
+    if (!responseData.model) {
+      warn('⚠️ model no está definido, usando fallback');
+      responseData.model = GENERATION_MODEL || 'gemini-2.5-flash-image';
+    }
+    
+    log('📤 Enviando respuesta al frontend:');
+    log(`   - success: ${responseData.success}`);
+    log(`   - model: ${responseData.model}`);
+    log(`   - requestId: ${responseData.requestId}`);
+    log(`   - generatedImage length: ${responseData.generatedImage.length} caracteres`);
+    log(`   - size: ${responseData.size}`);
+    log(`   - orientation: ${responseData.orientation}`);
+    log(`   - timestamp: ${responseData.timestamp}`);
+    
+    // Log del objeto completo para debugging
+    log('📋 Objeto de respuesta completo (sin generatedImage por tamaño):', {
+      ...responseData,
+      generatedImage: `[${responseData.generatedImage.length} caracteres]`
     });
+    
+    return res.json(responseData);
 
   } catch (error) {
     // Diagnóstico extendido

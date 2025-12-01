@@ -654,8 +654,8 @@ export default async function handler(req, res) {
   const GOOGLE_API_KEY = process.env.GOOGLE_AI_API_KEY;
   if (!GOOGLE_API_KEY) return res.status(500).json({ success: false, error: 'Falta GOOGLE_AI_API_KEY' });
 
-  // Generar ID único para este request (para debugging)
-  const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  // Usar requestId del frontend si viene, sino generar uno nuevo
+  const requestId = req.body?.requestId || `req_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   
   log('═══════════════════════════════════════════════════════════════');
   log(`🚀 REQUEST INICIADO [${requestId}]`);
@@ -665,7 +665,8 @@ export default async function handler(req, res) {
     url: req.url, 
     analysisModel: OPENAI_MODEL, 
     generationModel: GENERATION_MODEL,
-    requestId 
+    requestId,
+    requestIdSource: req.body?.requestId ? 'frontend' : 'backend-generated'
   });
   
   if (IS_DEV) {
@@ -987,6 +988,8 @@ export default async function handler(req, res) {
         finalImage: body.userImage,
         size: body.size || 'M',
         orientation: ALLOWED_ORIENTATIONS.has(body.userOrientation) ? body.userOrientation : 'front',
+        model: 'fallback',
+        requestId: requestId,
         fallback: true,
         errorType,
         errorReason: errorDescription,

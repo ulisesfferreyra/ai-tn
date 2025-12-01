@@ -971,18 +971,33 @@ export default async function handler(req, res) {
     
     log('📤 Enviando respuesta al frontend:');
     log(`   - success: ${responseData.success}`);
-    log(`   - model: ${responseData.model}`);
-    log(`   - requestId: ${responseData.requestId}`);
+    log(`   - model: ${responseData.model} (tipo: ${typeof responseData.model})`);
+    log(`   - requestId: ${responseData.requestId} (tipo: ${typeof responseData.requestId})`);
     log(`   - generatedImage length: ${responseData.generatedImage.length} caracteres`);
     log(`   - size: ${responseData.size}`);
     log(`   - orientation: ${responseData.orientation}`);
     log(`   - timestamp: ${responseData.timestamp}`);
     
-    // Log del objeto completo para debugging
-    log('📋 Objeto de respuesta completo (sin generatedImage por tamaño):', {
+    // Verificar que los campos críticos existen antes de enviar
+    const keys = Object.keys(responseData);
+    log(`📋 Claves en responseData: ${keys.join(', ')}`);
+    log(`✅ Verificación: requestId presente: ${!!responseData.requestId}, model presente: ${!!responseData.model}`);
+    
+    // Log del objeto completo para debugging (sin generatedImage por tamaño)
+    const debugResponse = {
       ...responseData,
       generatedImage: `[${responseData.generatedImage.length} caracteres]`
-    });
+    };
+    log('📋 Objeto de respuesta completo (sin generatedImage por tamaño):', JSON.stringify(debugResponse, null, 2));
+    
+    // Verificación final antes de enviar
+    if (!responseData.requestId || !responseData.model) {
+      err('❌ ERROR CRÍTICO: requestId o model faltan en la respuesta');
+      err(`   requestId: ${responseData.requestId}`);
+      err(`   model: ${responseData.model}`);
+      err(`   requestId original: ${requestId}`);
+      err(`   GENERATION_MODEL: ${GENERATION_MODEL}`);
+    }
     
     return res.json(responseData);
 

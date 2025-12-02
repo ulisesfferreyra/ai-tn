@@ -1,7 +1,8 @@
 // /pages/api/tryon.js
 // VERSIÓN MEJORADA: Análisis con OpenAI Vision + Generación con Gemini Nano Banana
-// 3 IMÁGENES FINALES: Usuario + Garment Matched + 1 Contexto
-// CON ANÁLISIS DE ESTILO COMBINADO
+// Basado en: 
+// - https://platform.openai.com/docs/guides/images-vision
+// - https://ai.google.dev/gemini-api/docs/image-generation
 
 import sharp from 'sharp';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -18,6 +19,7 @@ export const config = {
 // Helpers
 // ───────────────────────────────────────────────────────────────────────────────
 const IS_DEV = process.env.NODE_ENV !== 'production';
+// Logs siempre visibles para debugging (especialmente OpenAI y Nano Banana)
 const log  = (...a) => console.log('[TRY-ON]', ...a);
 const warn = (...a) => console.warn('[TRY-ON]', ...a);
 const err  = (...a) => console.error('[TRY-ON]', ...a);
@@ -33,8 +35,11 @@ const SIZE_MAP = {
   XXL: 'very oversized, very loose, very baggy',
 };
 
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
-const GENERATION_MODEL = 'gemini-2.5-flash-image';
+// Modelos a usar:
+// - Análisis: OpenAI GPT-4 Vision para análisis de imágenes
+// - Generación: Nano Banana (gemini-2.5-flash-image) para velocidad
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o'; // gpt-4o o gpt-4-turbo
+const GENERATION_MODEL = 'gemini-2.5-flash-image'; // Nano Banana
 
 function parseDataUrl(dataUrl) {
   if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return null;
@@ -50,14 +55,146 @@ async function normalizeToJpegBuffer(base64) {
     if (['heif', 'heic', 'webp', 'png', 'tiff'].includes(meta.format)) {
       return await sharp(input).jpeg({ quality: 90 }).toBuffer();
     }
-    return input;
+    return input; // ya es jpeg u otro soportado
   } catch (e) {
     warn('normalizeToJpegBuffer: metadata error, devolviendo buffer original:', e.message);
     return input;
   }
 }
 
+// =======================
+// PROMPT MEJORADO - Detección mejorada de orientación
+// =======================
+function buildPrompt({ productImagesCount, userOrientation, size }) {
+  const orientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
+  const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
+
+  return `You are an expert fashion AI with advanced image analysis capabilities. Your task is to dress the user with the exact garment from product images.
+
+TASK: Dress the user (first image) with the exact garment from the product images (remaining images).
+
+⚠️ CRITICAL: SYSTEMATIC IMAGE ANALYSIS - FOLLOW EXACTLY
+
+IMAGE ORDER (FIXED):
+- Image 1: USER (person to dress) - ALWAYS
+- Image 2: First product image (could be front OR back - you must determine)
+- Image 3, 4, etc.: Additional product images (may include models wearing the garment)
+
+═══════════════════════════════════════════════════════════════
+PHASE 1: SYSTEMATIC IMAGE ANALYSIS
+═══════════════════════════════════════════════════════════════
+
+STEP 1: Identify and Catalog All Images
+- Image 1 = USER (person to dress) - confirm this is a person photo
+- Image 2 = First product image - analyze in detail
+- Images 3+ = Additional product images - analyze each one
+
+STEP 2: DETAILED ANALYSIS OF EACH PRODUCT IMAGE
+
+For EACH product image (2, 3, 4, etc.), perform a systematic visual analysis:
+
+A) Image Type Detection:
+   - Does it show a PERSON/MODEL wearing the garment? (Yes/No)
+   - Does it show the garment alone (flat or on mannequin)? (Yes/No)
+   - What is the viewing angle? (front view / back view / side view / other)
+
+B) Visual Element Extraction (if garment is visible):
+   - Design/Graphics: Describe ALL visible graphics, logos, text, patterns
+   - Colors: Note primary and secondary colors
+   - Structural elements: Collar (yes/no, type), neckline (shape, depth), buttons/zippers (location), seams
+   - Text/Logos: Any text visible? Where? What does it say?
+   - Patterns: Stripes, prints, graphics - describe in detail
+   - Tags/Labels: Visible tags? Where? (typically on back)
+
+C) Orientation Indicators:
+   - FRONT indicators: Collar visible, neckline opening, buttons/zipper in front, main graphics/logos, text facing viewer
+   - BACK indicators: Tags visible, simpler design, no collar opening, different graphics than front
+
+STEP 3: COMPARISON LOGIC - DETERMINE IF IMAGE 2 IS FRONT OR BACK
+
+CRITICAL: Follow this EXACT sequence for comparison:
+
+A) Search for MODEL photos in images 3, 4, etc.:
+   - Systematically check each image (3, 4, etc.)
+   - Look for images showing a PERSON/MODEL wearing the garment facing the camera (front view)
+   - If found, extract and document:
+     * The design/graphics visible on the FRONT of the garment (chest/torso area)
+     * Colors, patterns, logos, text - describe in detail
+     * Any unique identifying features
+
+B) Extract design from Image 2:
+   - Analyze Image 2 in detail
+   - Document ALL visible design elements:
+     * Graphics, logos, text, patterns
+     * Colors and their arrangement
+     * Any unique identifying features
+   - Note structural elements (collar, buttons, etc.)
+
+C) SYSTEMATIC COMPARISON:
+   - Compare Image 2 design with model photo design (if model photo found in images 3+)
+   - Compare element by element:
+     * Graphics/Logos: Same or different?
+     * Text: Same or different?
+     * Patterns: Same or different?
+     * Colors: Same or different?
+     * Overall design composition: Same or different?
+   
+   - DECISION RULE:
+     * IF model photo found AND designs are DIFFERENT:
+       → Image 2 = BACK of the garment
+       → The model photo shows the FRONT design
+     * IF model photo found AND designs are THE SAME:
+       → Image 2 = FRONT of the garment
+     * IF no model photo found:
+       → Use orientation indicators (collars, tags, etc.) to determine if Image 2 is front or back
+
+STEP 4: Determine Correct FRONT Design to Use
+- If Image 2 = BACK: Extract FRONT design from model photo (images 3+) or other product images
+- If Image 2 = FRONT: Use Image 2's design
+- Document the exact FRONT design elements you will use:
+  * Graphics/Logos description
+  * Colors and arrangement
+  * Text (if any)
+  * Patterns
+  * Structural elements
+
+═══════════════════════════════════════════════════════════════
+PHASE 2: DRESSING THE USER
+═══════════════════════════════════════════════════════════════
+
+DRESSING INSTRUCTIONS:
+- Replace ONLY the user's clothing with the product garment
+- Use the CORRECT FRONT side design (as determined in Phase 1)
+- Apply the exact design elements documented in Step 4
+- Preserve: user's face, pose, expression, background, lighting
+- Match colors, patterns, logos, graphics, and text with 100% accuracy from the FRONT side
+- Ensure natural neckline alignment and proper fit
+- Size: ${sizeInstruction}
+- Make it photorealistic with natural fabric drape and realistic shadows
+
+═══════════════════════════════════════════════════════════════
+PHASE 3: VERIFICATION BEFORE GENERATING
+═══════════════════════════════════════════════════════════════
+
+Before generating, verify ALL of the following:
+
+✓ Performed systematic analysis of all product images
+✓ Identified which images show models wearing the garment
+✓ Extracted and documented design from Image 2
+✓ Extracted and documented design from model photo (if exists)
+✓ Compared designs systematically (element by element)
+✓ Correctly determined if Image 2 is FRONT or BACK based on design comparison
+✓ Documented the exact FRONT design to use
+✓ Using the FRONT design (not the back) to dress the user
+✓ All design elements (graphics, colors, text, patterns) match the FRONT side
+✓ User's pose and orientation match the garment application
+
+OUTPUT:
+Generate a single high-quality image showing the user wearing the exact product garment (FRONT side) with perfect visual fidelity, matching all documented design elements.`.trim();
+}
+
 function safePickGeneratedImage(resp) {
+  // Estrategia 1: Buscar en candidates[0].content.parts (formato estándar)
   try {
     const cand = resp?.candidates?.[0];
     if (cand) {
@@ -65,10 +202,12 @@ function safePickGeneratedImage(resp) {
       if (content) {
         const parts = content.parts || content?.parts || [];
         for (const p of parts) {
+          // Formato nuevo: inlineData
           if (p?.inlineData?.data && typeof p.inlineData.data === 'string' && p.inlineData.data.length > 100) {
             log('✅ Imagen encontrada en candidates[0].content.parts[].inlineData.data');
             return p.inlineData.data;
           }
+          // Formato alternativo: inline_data
           if (p?.inline_data?.data && typeof p.inline_data.data === 'string' && p.inline_data.data.length > 100) {
             log('✅ Imagen encontrada en candidates[0].content.parts[].inline_data.data');
             return p.inline_data.data;
@@ -80,6 +219,7 @@ function safePickGeneratedImage(resp) {
     err('safePickGeneratedImage path error:', e);
   }
   
+  // Estrategia 2: Buscar en output[0].inlineData
   try {
     if (resp?.output?.[0]?.inlineData?.data && typeof resp.output[0].inlineData.data === 'string' && resp.output[0].inlineData.data.length > 100) {
       log('✅ Imagen encontrada en output[0].inlineData.data');
@@ -93,6 +233,7 @@ function safePickGeneratedImage(resp) {
     err('safePickGeneratedImage alt path error:', e);
   }
   
+  // Estrategia 3: Buscar en todos los candidates
   try {
     if (resp?.candidates && Array.isArray(resp.candidates)) {
       for (let i = 0; i < resp.candidates.length; i++) {
@@ -128,41 +269,39 @@ function ensureCors(req, res) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// PASO 1: Análisis con OpenAI Vision - Retorna 3 índices (user, matched garment, 1 context)
+// PASO 1: Análisis previo con OpenAI Vision para determinar qué imagen usar
 // ───────────────────────────────────────────────────────────────────────────────
 async function analyzeProductImages(userImageBase64, productImagesArray) {
+  // Logs visibles en Vercel
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('🔍 INICIANDO ANÁLISIS CON OPENAI VISION');
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(`📸 Imágenes recibidas: 1 usuario + ${productImagesArray?.length || 0} producto`);
+  console.log(`📏 Tamaño imagen usuario: ${userImageBase64 ? (userImageBase64.length / 1024).toFixed(2) + ' KB' : 'N/A'}`);
+  
   log('═══════════════════════════════════════════════════════════════');
   log('🔍 INICIANDO ANÁLISIS CON OPENAI VISION');
   log('═══════════════════════════════════════════════════════════════');
   log(`📸 Imágenes recibidas: 1 usuario + ${productImagesArray?.length || 0} producto`);
+  log(`📏 Tamaño imagen usuario: ${userImageBase64 ? (userImageBase64.length / 1024).toFixed(2) + ' KB' : 'N/A'}`);
   
   if (!productImagesArray || productImagesArray.length === 0) {
     warn('⚠️ No se recibieron imágenes del producto para análisis');
-    return { 
-      useImageIndex: 0, 
-      additionalContextIndex: null,
-      reasoning: 'No product images provided' 
-    };
+    return { useImageIndex: 0, reasoning: 'No product images provided' };
   }
 
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   if (!OPENAI_API_KEY) {
-    warn('⚠️ OPENAI_API_KEY no configurada');
-    return { 
-      useImageIndex: 0,
-      additionalContextIndex: productImagesArray.length > 1 ? 1 : null,
-      reasoning: 'OpenAI API key not configured' 
-    };
+    warn('⚠️ OPENAI_API_KEY no configurada en variables de entorno');
+    warn('⚠️ Usando primera imagen del producto sin análisis de OpenAI');
+    return { useImageIndex: 0, reasoning: 'OpenAI API key not configured, using first product image' };
   }
   
-  log(`✅ OPENAI_API_KEY encontrada`);
-  log(`🤖 Modelo OpenAI: ${OPENAI_MODEL}`);
+  log(`✅ OPENAI_API_KEY encontrada (longitud: ${OPENAI_API_KEY.length} caracteres)`);
+  log(`🤖 Modelo OpenAI a usar: ${OPENAI_MODEL}`);
 
   const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
-  // ═══════════════════════════════════════════════════════════════════════════════
-  // PROMPT ACTUALIZADO DE OPENAI - Con estilo combinado y límite de 1 imagen adicional
-  // ═══════════════════════════════════════════════════════════════════════════════
   const analysisPrompt = `You will receive multiple images: some showing a USER/PERSON and others showing a GARMENT (clothing product).
 
 Your task: Create a JSON output that Nanobanana will use to generate a virtual try-on image by replacing the user's garment with the correct garment view.
@@ -170,57 +309,63 @@ Your task: Create a JSON output that Nanobanana will use to generate a virtual t
 CRITICAL - FOLLOW THIS EXACT SEQUENCE:
 
 STEP 1: IDENTIFY THE USER IMAGE
+
 - Find the image showing the person who needs garment replacement
+
 - Determine their pose orientation: are they facing camera (front) or facing away (back)?
+
 - Note: This tells us which garment view we need
 
 STEP 2: IDENTIFY ALL GARMENT IMAGES
+
 - Find all images showing the garment (may include model wearing it, flat lays, or different angles)
+
 - For each garment image, determine: is this showing the FRONT or BACK of the garment?
 
 STEP 3: MATCH GARMENT ORIENTATION TO USER ORIENTATION
+
 - If user is facing camera (front pose) → select garment image showing FRONT view
+
 - If user is facing away (back pose) → select garment image showing BACK view
+
 - CRITICAL: The garment orientation MUST match the user's pose orientation
 
 STEP 4: HOW TO IDENTIFY GARMENT FRONT vs BACK:
+
 - If person wearing garment is facing camera → what's on their CHEST = FRONT
+
 - If person wearing garment is facing away → what's on their BACK = BACK
+
 - For flat lays: analyze garment structure, neckline, collar, tag placement
+
 - DO NOT assume large graphics = front (they can be on back)
+
 - DO NOT use design complexity to determine orientation
 
 STEP 5: ANALYZE THE GARMENT FIT/STYLE
+
 - Look at how the garment fits on ANY model in the images
-- Measure fit characteristics (can combine multiple attributes):
+
+- Measure fit characteristics:
+
   * Sleeve length: short/regular/long/oversized
-  * Body fit: tight/fitted/regular/loose/oversized/boxy/relaxed
-  * Garment length: cropped/regular/long/extended
-  * Overall style: Describe the combination (e.g., "oversized + boxy", "fitted + cropped", "relaxed + long", "oversized streetwear")
-- CRITICAL: Capture the complete style profile, not just individual attributes
-- Examples of combined styles:
-  * "oversized and boxy" - loose and square-shaped
-  * "fitted and cropped" - snug with shortened length
-  * "relaxed streetwear" - comfortable, casual aesthetic
-  * "oversized with long sleeves" - baggy with extended sleeve length
-- If no model present, analyze garment structure and proportions to infer style
+
+  * Body fit: tight/regular/loose/oversized/boxy
+
+  * Garment length: cropped/regular/long/oversized
+
+- If no model present, analyze garment structure and proportions
 
 STEP 6: CAPTURE DESIGN DETAILS
+
 - Describe ALL visible design elements on the selected garment view
+
 - Include: graphics, text, logos, patterns, colors, placement
+
 - Note unique features that must be preserved in the virtual try-on
 
-STEP 7: SELECT ONE ADDITIONAL CONTEXT IMAGE (CRITICAL - ONLY ONE)
-- From the REMAINING garment images (excluding the matched garment image), select ONLY ONE additional image
-- Priority selection criteria (choose the FIRST match):
-  1. An image showing a HUMAN MODEL wearing the garment (for fit reference)
-  2. If no human model exists, select the image with the CLEAREST view of garment details
-  3. If all images are similar quality, select the first remaining image
-- CRITICAL: You MUST select exactly ONE additional image, no more, no less
-- Purpose: This single additional image provides context for fit accuracy and garment details
-- DO NOT select more than one additional image (Nanobanana performs best with 3 total images: user + matched garment + 1 context)
-
 Return ONLY valid JSON (no additional text, no markdown, no code blocks):
+
 {
   "user_image": {
     "index": <number>,
@@ -234,49 +379,49 @@ Return ONLY valid JSON (no additional text, no markdown, no code blocks):
   },
   "fit_style": {
     "sleeve_length": "<short/regular/long/oversized>",
-    "body_fit": "<tight/fitted/regular/loose/oversized/boxy/relaxed>",
-    "garment_length": "<cropped/regular/long/extended>",
-    "overall_style": "<combined style description, e.g., 'oversized and boxy', 'fitted and cropped', 'relaxed streetwear', 'oversized with long sleeves'>"
+    "body_fit": "<tight/regular/loose/oversized/boxy>",
+    "garment_length": "<cropped/regular/long/oversized>"
   },
   "design_details": {
     "description": "<detailed description of ALL design elements visible on the selected garment view>",
     "notable_features": "<unique identifiable features that must be preserved>"
   },
-  "additional_context_image": {
-    "index": <number - exactly ONE additional image index>,
-    "reason": "<explain why this specific image was selected: does it show a human model? does it provide clear garment details?>",
-    "usage": "Reference only for fit accuracy and garment details. Study human model (if present) to understand realistic drape, proportions, and fabric behavior. DO NOT use for orientation decisions."
-  },
-  "instruction": "<clear instruction for Nanobanana: 'Replace the garment on the user in image X (orientation) with the garment shown in image Y (orientation), maintaining the [fit_style] characteristics including the overall style of [overall_style]. Use image Z as additional reference for fit and garment details.'>",
-  "reasoning": "<explain your analysis: which image is the user? what's their orientation? which garment image matches? how did you identify front/back? what is the overall style and why? why did you select this specific additional context image?>",
+  "instruction": "<clear instruction for Nanobanana: 'Replace the garment on the user in image X (orientation) with the garment shown in image Y (orientation), maintaining the [fit_style] characteristics'>",
+  "reasoning": "<explain your analysis: which image is the user? what's their orientation? which garment image matches? how did you identify front/back?>",
   "confidence": "<high/medium/low>"
 }
 
 CRITICAL RULES:
+
 - user_image.index and garment_image.index must be different
-- additional_context_image.index must be different from both user_image.index and garment_image.index
+
 - garment_image.orientation MUST match user's pose orientation
+
 - fit_style must accurately reflect how garment appears on any model
-- overall_style must capture the complete aesthetic, not just individual measurements
+
 - design_details must capture EVERY visible element for accurate replication
-- additional_context_image must contain EXACTLY ONE index (not an array, not multiple indices)
+
 - Output must be valid JSON only, no markdown formatting`;
 
   try {
+    // Construir mensajes para OpenAI
     const messages = [
       {
         role: 'user',
         content: [
           { type: 'text', text: analysisPrompt },
+          // Imagen 1: Usuario
           {
             type: 'image_url',
-            image_url: { url: `data:image/jpeg;base64,${userImageBase64}` }
+            image_url: {
+              url: `data:image/jpeg;base64,${userImageBase64}`
+            }
           }
         ]
       }
     ];
 
-    // Agregar todas las imágenes del producto
+    // Agregar imágenes del producto (Images 2, 3, 4)
     for (let i = 0; i < productImagesArray.length; i++) {
       const raw = productImagesArray[i];
       try {
@@ -286,442 +431,483 @@ CRITICAL RULES:
         const buf = await normalizeToJpegBuffer(parsed.base64);
         messages[0].content.push({
           type: 'image_url',
-          image_url: { url: `data:image/jpeg;base64,${buf.toString('base64')}` }
+          image_url: {
+            url: `data:image/jpeg;base64,${buf.toString('base64')}`
+          }
         });
       } catch (imgErr) {
-        warn(`Error procesando imagen producto ${i}:`, imgErr.message);
+        warn(`Error procesando imagen producto ${i} para análisis:`, imgErr.message);
       }
     }
 
-    const totalImages = messages[0].content.length - 1;
-    log(`📤 Enviando ${totalImages} imágenes a OpenAI (1 usuario + ${productImagesArray.length} producto)...`);
+    const totalImages = messages[0].content.length - 1; // -1 porque el primero es el texto del prompt
+    log(`📤 Enviando ${totalImages} imágenes a OpenAI Vision (1 usuario + ${productImagesArray.length} producto)...`);
+    log(`📋 Configuración de la llamada:`);
+    log(`   - Modelo: ${OPENAI_MODEL}`);
+    log(`   - Temperature: 0.1`);
+    log(`   - Max tokens: 1500`);
+    log(`   - Response format: json_object`);
     
     const openaiStartTime = Date.now();
+    log(`⏱️ Iniciando llamada a OpenAI API...`);
+    
     const analysisResponse = await openai.chat.completions.create({
       model: OPENAI_MODEL,
       messages: messages,
-      temperature: 0.1,
-      response_format: { type: 'json_object' },
-      max_tokens: 1500,
+      temperature: 0.1, // Muy determinístico para análisis preciso
+      response_format: { type: 'json_object' }, // Forzar respuesta JSON
+      max_tokens: 1500, // Aumentado para el nuevo formato JSON más detallado
     });
 
     const openaiDuration = Date.now() - openaiStartTime;
     const analysisText = analysisResponse.choices[0]?.message?.content;
     
     if (!analysisText) {
-      err('❌ OpenAI no retornó contenido');
+      err('❌ OpenAI no retornó contenido en la respuesta');
       throw new Error('No response from OpenAI');
     }
 
+    // Logs visibles en Vercel
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('✅ ANÁLISIS COMPLETADO CON OPENAI VISION');
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log(`⏱️ Tiempo total de análisis: ${openaiDuration}ms (${(openaiDuration / 1000).toFixed(2)}s)`);
+    console.log('📊 Tokens usados:');
+    console.log(`   - Prompt tokens: ${analysisResponse.usage?.prompt_tokens || 'N/A'}`);
+    console.log(`   - Completion tokens: ${analysisResponse.usage?.completion_tokens || 'N/A'}`);
+    console.log(`   - Total tokens: ${analysisResponse.usage?.total_tokens || 'N/A'}`);
+    console.log('📋 Respuesta completa del análisis (primeros 500 chars):');
+    console.log(analysisText.substring(0, 500));
+    
     log('═══════════════════════════════════════════════════════════════');
     log('✅ ANÁLISIS COMPLETADO CON OPENAI VISION');
-    log(`⏱️ Tiempo: ${openaiDuration}ms`);
-    log(`📊 Tokens: ${analysisResponse.usage?.total_tokens || 'N/A'}`);
+    log('═══════════════════════════════════════════════════════════════');
+    log(`⏱️ Tiempo total de análisis: ${openaiDuration}ms (${(openaiDuration / 1000).toFixed(2)}s)`);
+    log('📊 Tokens usados:');
+    log(`   - Prompt tokens: ${analysisResponse.usage?.prompt_tokens || 'N/A'}`);
+    log(`   - Completion tokens: ${analysisResponse.usage?.completion_tokens || 'N/A'}`);
+    log(`   - Total tokens: ${analysisResponse.usage?.total_tokens || 'N/A'}`);
+    log('📋 Respuesta completa del análisis:');
+    log(analysisText);
     log('═══════════════════════════════════════════════════════════════');
 
     // Parsear respuesta JSON
     let analysisData;
     try {
+      // Limpiar respuesta si tiene markdown code blocks
       const cleanedText = analysisText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       analysisData = JSON.parse(cleanedText);
       
-      // Validar estructura
+      // Validar estructura del JSON
       if (!analysisData.user_image || !analysisData.garment_image) {
         throw new Error('JSON structure invalid: missing user_image or garment_image');
       }
       
-      // Convertir índices de OpenAI (basados en 1) a índices de array (basados en 0)
+      // Validar índices (OpenAI retorna índices basados en 1, nosotros usamos basados en 0)
+      // user_image.index: 1 = usuario (índice 0 en nuestro array)
+      // garment_image.index: 2, 3, 4 = productos (índices 0, 1, 2 en nuestro array)
       const userIndex = analysisData.user_image.index;
       const garmentIndex = analysisData.garment_image.index;
-      const contextIndex = analysisData.additional_context_image?.index;
       
-      // Validar user_index (debe ser 1 = usuario)
+      // Validar que user_index sea 1 (usuario)
       if (userIndex !== 1) {
         warn(`⚠️ user_image.index debe ser 1, recibido: ${userIndex}`);
       }
       
-      // Convertir garment_index a índice de array
+      // Convertir garment_index a índice de array (Image 2 = índice 0, Image 3 = índice 1, Image 4 = índice 2)
       let useImageIndex = 0;
-      if (garmentIndex >= 2 && garmentIndex <= (productImagesArray.length + 1)) {
-        useImageIndex = garmentIndex - 2;
+      if (garmentIndex >= 2 && garmentIndex <= 4) {
+        useImageIndex = garmentIndex - 2; // Convertir a índice de array
       } else {
         warn(`⚠️ garment_image.index inválido: ${garmentIndex}, usando primera imagen`);
         useImageIndex = 0;
       }
       
-      // Validar rango
+      // Validar que el índice esté dentro del rango del array
       if (useImageIndex < 0 || useImageIndex >= productImagesArray.length) {
         warn(`⚠️ Índice fuera de rango: ${useImageIndex}, usando primera imagen`);
         useImageIndex = 0;
       }
       
-      // Convertir context_index a índice de array
-      let additionalContextIndex = null;
-      if (contextIndex && contextIndex >= 2 && contextIndex <= (productImagesArray.length + 1)) {
-        additionalContextIndex = contextIndex - 2;
-        
-        // Validar que no sea el mismo que garment_index
-        if (additionalContextIndex === useImageIndex) {
-          warn(`⚠️ additional_context_image.index es igual a garment_image.index, buscando alternativa`);
-          // Buscar primera imagen disponible diferente
-          for (let i = 0; i < productImagesArray.length; i++) {
-            if (i !== useImageIndex) {
-              additionalContextIndex = i;
-              break;
-            }
-          }
-        }
-        
-        // Validar rango
-        if (additionalContextIndex < 0 || additionalContextIndex >= productImagesArray.length) {
-          warn(`⚠️ Context index fuera de rango: ${additionalContextIndex}`);
-          additionalContextIndex = null;
-        }
-      }
-      
-      // Si no hay additional_context_image en la respuesta o es inválido, seleccionar automáticamente
-      if (additionalContextIndex === null && productImagesArray.length > 1) {
-        // Seleccionar primera imagen disponible que no sea la matched
-        for (let i = 0; i < productImagesArray.length; i++) {
-          if (i !== useImageIndex) {
-            additionalContextIndex = i;
-            log(`ℹ️ additional_context_image seleccionado automáticamente: índice ${i}`);
-            
-            // Agregar a analysisData si no existía
-            if (!analysisData.additional_context_image) {
-              analysisData.additional_context_image = {
-                index: i + 2, // Convertir a formato OpenAI (basado en 1, +1 por user image)
-                reason: "Automatically selected as additional context",
-                usage: "Reference only for fit accuracy and garment details. Study human model (if present) to understand realistic drape, proportions, and fabric behavior. DO NOT use for orientation decisions."
-              };
-            }
-            break;
-          }
-        }
-      }
-      
-      // Agregar índices convertidos para uso interno
+      // Agregar useImageIndex para compatibilidad
       analysisData.useImageIndex = useImageIndex;
-      analysisData.additionalContextIndex = additionalContextIndex;
       
       log(`🎯 Resultado del análisis:`);
-      log(`   👤 Usuario: imagen ${userIndex}`);
-      log(`   👕 Garment matched: imagen ${garmentIndex} (array índice: ${useImageIndex}) - ${analysisData.garment_image.orientation}`);
-      log(`   📸 Context adicional: ${additionalContextIndex !== null ? `imagen ${contextIndex} (array índice: ${additionalContextIndex})` : 'ninguna'}`);
-      log(`   📏 Fit: ${analysisData.fit_style?.sleeve_length}, ${analysisData.fit_style?.body_fit}, ${analysisData.fit_style?.garment_length}`);
-      log(`   🎭 Overall style: ${analysisData.fit_style?.overall_style || 'N/A'}`);
+      log(`   👤 Usuario: imagen ${userIndex} - ${analysisData.user_image.description}`);
+      log(`   👕 Garment: imagen ${garmentIndex} (índice array: ${useImageIndex}) - ${analysisData.garment_image.orientation}`);
+      log(`   📏 Fit: ${analysisData.fit_style?.sleeve_length || 'N/A'} sleeves, ${analysisData.fit_style?.body_fit || 'N/A'} fit, ${analysisData.fit_style?.garment_length || 'N/A'} length`);
+      log(`   🎨 Design: ${analysisData.design_details?.description?.substring(0, 100) || 'N/A'}...`);
+      log(`   📝 Razón: ${analysisData.reasoning || 'No reasoning provided'}`);
       log(`   ✅ Confianza: ${analysisData.confidence || 'unknown'}`);
 
     } catch (parseErr) {
-      warn('Error parseando respuesta de análisis:', parseErr);
-      // Fallback con contexto automático
-      let additionalContextIndex = productImagesArray.length > 1 ? 1 : null;
+      warn('Error parseando respuesta de análisis, usando primera imagen:', parseErr);
       analysisData = { 
-        useImageIndex: 0,
-        additionalContextIndex: additionalContextIndex,
+        useImageIndex: 0, 
         user_image: { index: 1, description: 'Unknown' },
         garment_image: { index: 2, description: 'Unknown', orientation: 'front', reason: 'Error parsing analysis' },
-        fit_style: { 
-          sleeve_length: 'regular', 
-          body_fit: 'regular', 
-          garment_length: 'regular',
-          overall_style: 'standard fit'
-        },
+        fit_style: { sleeve_length: 'regular', body_fit: 'regular', garment_length: 'regular' },
         design_details: { description: 'Unknown', notable_features: 'Unknown' },
-        additional_context_image: additionalContextIndex !== null ? {
-          index: additionalContextIndex + 2,
-          reason: 'Fallback selection',
-          usage: 'Reference for context'
-        } : null,
         instruction: 'Replace garment with first product image',
-        reasoning: 'Error parsing analysis',
+        reasoning: 'Error parsing analysis, using first product image',
         confidence: 'low'
       };
     }
 
     return analysisData;
   } catch (analysisError) {
-    err('Error en análisis OpenAI:', analysisError);
-    // Fallback
-    let additionalContextIndex = productImagesArray.length > 1 ? 1 : null;
-    return { 
-      useImageIndex: 0,
-      additionalContextIndex: additionalContextIndex,
-      reasoning: 'Analysis failed, using first product image' 
-    };
+    err('Error en análisis previo con OpenAI:', analysisError);
+    // Fallback: usar primera imagen del producto
+    return { useImageIndex: 0, reasoning: 'Analysis failed, using first product image' };
   }
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// PASO 2: Prompt de generación para Nano Banana (3 imágenes) - CON ESTILO COMBINADO
+// PASO 2: Prompt para generación con Nano Banana usando datos del análisis
 // ───────────────────────────────────────────────────────────────────────────────
 function buildGenerationPrompt({ analysisData, size }) {
+  // Extraer datos del análisis
   const userImage = analysisData.user_image || { description: 'Person facing camera' };
   const garmentImage = analysisData.garment_image || { description: 'Garment view', orientation: 'front', reason: 'Selected garment' };
-  const fitStyle = analysisData.fit_style || { 
-    sleeve_length: 'regular', 
-    body_fit: 'regular', 
-    garment_length: 'regular',
-    overall_style: 'standard fit'
-  };
+  const fitStyle = analysisData.fit_style || { sleeve_length: 'regular', body_fit: 'regular', garment_length: 'regular' };
   const designDetails = analysisData.design_details || { description: 'Garment design', notable_features: 'Standard features' };
   const instruction = analysisData.instruction || 'Replace the garment on the user with the product garment';
   const confidence = analysisData.confidence || 'medium';
-  const additionalContextImage = analysisData.additional_context_image;
 
   return `VIRTUAL TRY-ON TASK
 
-You will receive EXACTLY THREE images that have been pre-analyzed and matched:
+You will receive TWO images that have been pre-analyzed and matched:
+
 1. USER IMAGE: Person in specific pose (facing front or back)
+
 2. GARMENT IMAGE: The exact garment view that matches the user's orientation
-3. CONTEXT IMAGE: One additional reference image for fit and detail accuracy
 
 PRE-ANALYSIS CONTEXT:
+
 User Pose: ${userImage.description}
+
 Garment View: ${garmentImage.description} (${garmentImage.orientation})
+
 Match Reasoning: ${garmentImage.reason}
 
 GARMENT FIT SPECIFICATIONS:
-- Sleeve length: ${fitStyle.sleeve_length}
-- Body fit: ${fitStyle.body_fit}
-- Garment length: ${fitStyle.garment_length}
-- Overall style: ${fitStyle.overall_style || 'standard fit'}
 
-CRITICAL FIT INSTRUCTION:
-The overall style "${fitStyle.overall_style || 'standard fit'}" describes the complete silhouette and aesthetic that MUST be replicated exactly. This is not just about individual measurements but the combined visual effect and vibe of the garment. Pay special attention to how these attributes work together to create the garment's distinctive look.
+- Sleeve length: ${fitStyle.sleeve_length}
+
+- Body fit: ${fitStyle.body_fit}
+
+- Garment length: ${fitStyle.garment_length}
 
 GARMENT DESIGN TO REPLICATE:
+
 ${designDetails.description}
 
 Critical Features: ${designDetails.notable_features}
 
-ADDITIONAL CONTEXT IMAGE:
-You have received ONE additional reference image (image 3).
-Purpose: ${additionalContextImage?.usage || 'Reference for fit and details'}
-Selection Reason: ${additionalContextImage?.reason || 'Additional context'}
-
-USAGE INSTRUCTIONS FOR THE CONTEXT IMAGE:
-- PRIMARY SOURCES: Image 1 (user) + Image 2 (matched garment) for orientation and replacement
-- SECONDARY SOURCE: Image 3 (context) ONLY to:
-  * Refine fit accuracy by studying how garment appears on human model (if present)
-  * Understand natural fabric drape, wrinkles, and movement
-  * Verify design details and color accuracy from different angle
-  * Enhance realism of garment-body interaction
-  * Better understand the overall style aesthetic (${fitStyle.overall_style || 'standard fit'})
-- CRITICAL: Image 3 is CONTEXT ONLY, NOT for orientation decisions
-- Your primary sources remain: Image 1 (user) and Image 2 (matched garment)
-
 YOUR TASK:
+
 ${instruction}
 
 MANDATORY EXECUTION RULES:
 
 ✓ USER PRESERVATION (ZERO TOLERANCE):
+
  - Keep user's EXACT pose: ${userImage.description}
+
  - Keep user's EXACT face, expression, features (100% recognizable)
+
  - Keep user's EXACT arms, hands, body position (no movement)
+
  - Keep EXACT background, lighting, environment (unchanged)
 
 ✓ GARMENT REPLACEMENT:
- - Replace ONLY the user's existing garment with the product garment
- - Apply garment with these EXACT fit characteristics:
-  * Sleeves: ${fitStyle.sleeve_length} - do not adjust
-  * Body: ${fitStyle.body_fit} - do not tighten or loosen
-  * Length: ${fitStyle.garment_length} - do not shorten or extend
-  * Overall aesthetic: ${fitStyle.overall_style || 'standard fit'} - maintain this complete style profile
 
-✓ STYLE ACCURACY:
- - The garment must embody the "${fitStyle.overall_style || 'standard fit'}" aesthetic
- - This means replicating not just measurements but the visual vibe and silhouette
- - If style is "oversized and boxy": garment should look loose AND square-shaped
- - If style is "fitted and cropped": garment should look snug AND shortened
- - If style is "relaxed streetwear": garment should have a casual, comfortable aesthetic
- - The style descriptor is THE PRIMARY REFERENCE for how the garment should look
+ - Replace ONLY the user's existing garment with the product garment
+
+ - Apply garment with these EXACT fit characteristics:
+
+  * Sleeves: ${fitStyle.sleeve_length} - do not adjust
+
+  * Body: ${fitStyle.body_fit} - do not tighten or loosen
+
+  * Length: ${fitStyle.garment_length} - do not shorten or extend
 
 ✓ DESIGN ACCURACY:
+
  - Replicate EVERY design element: ${designDetails.description}
+
  - Preserve all notable features: ${designDetails.notable_features}
+
  - Match exact colors, patterns, graphics, text, placement
+
  - No design elements should be missing, distorted, or altered
 
 ✓ ORIENTATION CORRECTNESS:
+
  - User orientation: ${userImage.description}
+
  - Garment orientation: ${garmentImage.orientation}
+
  - These MUST align (front-to-front OR back-to-back)
+
  - Do NOT mix orientations or flip designs
 
 ✓ REALISM:
+
  - Photorealistic output quality
+
  - Natural fabric drape, wrinkles, shadows
+
  - Proper garment-body interaction
+
  - Seamless integration with user's body
- - The "${fitStyle.overall_style || 'standard fit'}" aesthetic must look natural and believable
 
 CRITICAL GUARDRAILS:
+
 - If user's pose changes → REFUSE
+
 - If face becomes unrecognizable → REFUSE
+
 - If background changes → REFUSE
+
 - If fit specifications cannot be met → REFUSE
-- If overall style aesthetic cannot be achieved → REFUSE
+
 - If design elements are incomplete → REFUSE
+
 - If orientation mismatch occurs → REFUSE
 
 OUTPUT REQUIREMENT:
-Generate a photorealistic image showing the user in their EXACT original pose and environment, now wearing the garment with PERFECT design replication, EXACT fit specifications, and the complete "${fitStyle.overall_style || 'standard fit'}" aesthetic. The result must be indistinguishable from a real photo of this person wearing this specific garment with this exact style.
+
+Generate a photorealistic image showing the user in their EXACT original pose and environment, now wearing the garment with PERFECT design replication and EXACT fit specifications. The result must be indistinguishable from a real photo of this person wearing this garment.
 
 Analysis Confidence Level: ${confidence}`.trim();
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// Handler Principal
+// Handler
 // ───────────────────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
-  console.log('═══════════════════════════════════════════════════════════════');
+  // ========================================
+  // LOGS INMEDIATOS PARA VERCEL - PRIMERA LÍNEA
+  // ========================================
+  console.log('[VERCEL-LOG] ===========================================');
+  console.log('[VERCEL-LOG] BACKEND-TRYON-IMPROVED.JS EJECUTÁNDOSE');
+  console.log('[VERCEL-LOG] TIMESTAMP:', new Date().toISOString());
+  console.log('[VERCEL-LOG] METHOD:', req.method);
+  console.log('[VERCEL-LOG] URL:', req.url);
+  console.log('[VERCEL-LOG] ===========================================');
+  
+  // Logs con emojis también
   console.log('🔵 BACKEND-TRYON-IMPROVED.JS EJECUTÁNDOSE');
-  console.log('🔵 VERSIÓN CON 3 IMÁGENES + ANÁLISIS DE ESTILO COMBINADO');
-  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('🔵 VERSIÓN CON requestId Y model EN RESPUESTAS');
+  console.log('🔵 TIMESTAMP:', new Date().toISOString());
+  console.log('🔵 METHOD:', req.method);
+  console.log('🔵 URL:', req.url);
   
   ensureCors(req, res);
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Método no permitido' });
+  if (req.method === 'OPTIONS') {
+    console.log('[VERCEL-LOG] OPTIONS request, retornando 200');
+    console.log('✅ OPTIONS request, retornando 200');
+    return res.status(200).end();
+  }
+  if (req.method !== 'POST') {
+    console.log('[VERCEL-LOG] Método no permitido:', req.method);
+    console.log('❌ Método no permitido:', req.method);
+    return res.status(405).json({ error: 'Método no permitido' });
+  }
 
   const GOOGLE_API_KEY = process.env.GOOGLE_AI_API_KEY;
-  if (!GOOGLE_API_KEY) return res.status(500).json({ success: false, error: 'Falta GOOGLE_AI_API_KEY' });
+  if (!GOOGLE_API_KEY) {
+    console.error('[VERCEL-LOG] ERROR: Falta GOOGLE_AI_API_KEY');
+    console.error('❌ Falta GOOGLE_AI_API_KEY');
+    return res.status(500).json({ success: false, error: 'Falta GOOGLE_AI_API_KEY' });
+  }
+  
+  console.log('[VERCEL-LOG] GOOGLE_AI_API_KEY encontrada');
 
+  // Usar requestId del frontend si viene, sino generar uno nuevo
   const requestId = req.body?.requestId || `req_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  
+  console.log('[VERCEL-LOG] ===========================================');
+  console.log(`[VERCEL-LOG] REQUEST INICIADO [${requestId}]`);
+  console.log(`[VERCEL-LOG] Request ID Source: ${req.body?.requestId ? 'frontend' : 'backend-generated'}`);
+  console.log('[VERCEL-LOG] ===========================================');
+  
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(`🚀 REQUEST INICIADO [${requestId}]`);
+  console.log(`📋 Request ID Source: ${req.body?.requestId ? 'frontend' : 'backend-generated'}`);
+  console.log('═══════════════════════════════════════════════════════════════');
   
   log('═══════════════════════════════════════════════════════════════');
   log(`🚀 REQUEST INICIADO [${requestId}]`);
   log('═══════════════════════════════════════════════════════════════');
+  log('📋 Request Info:', { 
+    method: req.method, 
+    url: req.url, 
+    analysisModel: OPENAI_MODEL, 
+    generationModel: GENERATION_MODEL,
+    requestId,
+    requestIdSource: req.body?.requestId ? 'frontend' : 'backend-generated'
+  });
+  
+  if (IS_DEV) {
+    log('📦 Headers:', req.headers);
+    log('📦 Body keys:', Object.keys(req.body || {}));
+    const asStr = JSON.stringify(req.body || {});
+    log('📦 Body size:', asStr.length, 'chars ≈', (asStr.length / 1024 / 1024).toFixed(2), 'MB');
+  }
 
   try {
-    const { productImage, productImages, size, userImage } = req.body || {};
+    const { productImage, productImages, size, userImage, userOrientation } = req.body || {};
     
     log(`📥 DATOS RECIBIDOS [${requestId}]:`);
-    log(`   ✅ userImage: ${userImage ? 'SÍ' : 'NO'}`);
-    log(`   ✅ productImages: ${Array.isArray(productImages) ? `SÍ (${productImages.length})` : 'NO'}`);
-    log(`   ✅ size: ${size || 'M'}`);
+    log(`   ✅ userImage: ${userImage ? 'SÍ' : 'NO'} (${userImage ? (userImage.length / 1024).toFixed(2) + ' KB' : '0 KB'})`);
+    log(`   ✅ productImages: ${Array.isArray(productImages) ? `SÍ (${productImages.length} imágenes)` : 'NO'}`);
+    log(`   ✅ productImage: ${productImage ? 'SÍ' : 'NO'}`);
+    log(`   ✅ size: ${size || 'M (default)'}`);
+    log(`   ✅ userOrientation: ${userOrientation || 'null'}`);
 
-    if (!userImage) return res.status(400).json({ success: false, error: 'No userImage' });
+    if (!userImage) return res.status(400).json({ success: false, error: 'No se recibió imagen del usuario' });
 
-    // Unificar imágenes de producto (máximo 3)
+    // Unificar imágenes de producto (máximo 3 según el frontend)
     let productImagesArray = [];
     if (Array.isArray(productImages) && productImages.length) {
-      productImagesArray = productImages.slice(0, 3);
+      productImagesArray = productImages.slice(0, 3); // Limitar a 3 imágenes
+      log(`   📸 productImages array: ${productImages.length} imágenes recibidas, usando primeras ${productImagesArray.length}`);
     } else if (productImage) {
       productImagesArray = [productImage];
+      log(`   📸 productImage singular: 1 imagen recibida`);
+    } else {
+      log(`   ⚠️ No se recibieron imágenes del producto`);
     }
     
-    log(`   📊 Total imágenes producto: ${productImagesArray.length}`);
+    log(`   📊 Total imágenes producto a procesar: ${productImagesArray.length}`);
 
-    // Parse user image
+    const selectedOrientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
+
+    // Parse/normalize user image
     const parsedUser = parseDataUrl(userImage);
     if (!parsedUser) {
-      return res.status(400).json({ success: false, error: 'userImage inválido' });
+      return res.status(400).json({ success: false, error: 'userImage debe ser una data URL base64 (data:image/...;base64,...)' });
     }
 
     const processedUserImage = await normalizeToJpegBuffer(parsedUser.base64);
 
-    // ═══════════════════════════════════════════════════════════════
-    // PASO 1: Análisis con OpenAI
-    // ═══════════════════════════════════════════════════════════════
+    // ───────────────────────────────────────────────────────────────────────────────
+    // PASO 1: Análisis previo con OpenAI Vision para determinar qué imagen usar
+    // ───────────────────────────────────────────────────────────────────────────────
+    console.log('[VERCEL-LOG] ===========================================');
+    console.log(`[VERCEL-LOG] PASO 1: ANÁLISIS CON OPENAI VISION [${requestId}]`);
+    console.log(`[VERCEL-LOG] Analizando: 1 usuario + ${productImagesArray.length} producto`);
+    console.log('[VERCEL-LOG] ===========================================');
+    
     log('═══════════════════════════════════════════════════════════════');
-    log(`🔍 PASO 1: ANÁLISIS CON OPENAI [${requestId}]`);
+    log(`🔍 PASO 1: ANÁLISIS CON OPENAI VISION [${requestId}]`);
     log('═══════════════════════════════════════════════════════════════');
+    log(`📸 Analizando: 1 imagen usuario + ${productImagesArray.length} imágenes producto`);
+    log(`📋 Request ID: ${requestId}`);
     
     const analysisResult = await analyzeProductImages(
       processedUserImage.toString('base64'),
       productImagesArray
     );
     
-    const { useImageIndex, additionalContextIndex } = analysisResult;
-    
-    log(`✅ Análisis completado:`);
-    log(`   👕 Matched garment: índice ${useImageIndex}`);
-    log(`   📸 Context adicional: ${additionalContextIndex !== null ? `índice ${additionalContextIndex}` : 'ninguna'}`);
+    let { useImageIndex } = analysisResult;
+    log(`✅ Análisis completado: Usar imagen del producto en índice ${useImageIndex}`);
 
-    // Validar índices
+    // Seleccionar solo la imagen del producto que OpenAI determinó
     if (useImageIndex < 0 || useImageIndex >= productImagesArray.length) {
-      warn(`⚠️ useImageIndex inválido, usando 0`);
-      analysisResult.useImageIndex = 0;
-    }
-    
-    if (additionalContextIndex !== null && (additionalContextIndex < 0 || additionalContextIndex >= productImagesArray.length)) {
-      warn(`⚠️ additionalContextIndex inválido, ignorando`);
-      analysisResult.additionalContextIndex = null;
+      warn(`⚠️ Índice inválido ${useImageIndex}, usando primera imagen del producto`);
+      useImageIndex = 0;
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // PASO 2: Preparar imágenes para Nano Banana (3 imágenes totales)
-    // ═══════════════════════════════════════════════════════════════
+    const selectedProductImage = productImagesArray[useImageIndex];
+    if (!selectedProductImage) {
+      return res.status(400).json({ success: false, error: 'No se pudo seleccionar imagen del producto' });
+    }
+
+    log(`🎯 Imagen seleccionada: índice ${useImageIndex} de ${productImagesArray.length} imágenes disponibles`);
+    log(`📋 Request ID: ${requestId}`);
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // PASO 2: Generación con Nano Banana - Solo 2 imágenes (usuario + producto seleccionado)
+    // ───────────────────────────────────────────────────────────────────────────────
     log('═══════════════════════════════════════════════════════════════');
     log(`🎨 PASO 2: GENERACIÓN CON NANO BANANA [${requestId}]`);
     log('═══════════════════════════════════════════════════════════════');
+    log(`📋 Request ID: ${requestId}`);
 
+    // Construir prompt usando datos del análisis de OpenAI
     const generationPrompt = buildGenerationPrompt({ 
       analysisData: analysisResult,
       size 
     });
 
-    // Construir parts: 1. Prompt, 2. User, 3. Matched Garment, 4. Context (si existe)
+    // Construir partes para generación - SOLO 2 IMÁGENES
+    // 1. Usuario
+    // 2. Producto seleccionado
     const parts = [
       { text: generationPrompt },
       { inlineData: { mimeType: 'image/jpeg', data: processedUserImage.toString('base64') } },
     ];
 
-    // Agregar matched garment image
+    // Procesar solo la imagen del producto seleccionada
     try {
-      const matchedImage = productImagesArray[analysisResult.useImageIndex];
-      const parsed = parseDataUrl(matchedImage);
+      const parsed = parseDataUrl(selectedProductImage);
       if (!parsed) {
-        return res.status(400).json({ success: false, error: 'Matched garment image inválida' });
+        return res.status(400).json({ success: false, error: 'Imagen del producto seleccionada no es válida' });
       }
 
+      const supported = /^(image\/)(jpeg|jpg|png|webp)$/i.test(parsed.mime);
+      if (!supported) {
+        return res.status(400).json({ success: false, error: `Formato de imagen no soportado: ${parsed.mime}` });
+      }
+
+      // Normalizar a jpeg
       const productBuf = await normalizeToJpegBuffer(parsed.base64);
-      parts.push({ inlineData: { mimeType: 'image/jpeg', data: productBuf.toString('base64') } });
-      log(`✅ Matched garment agregada (índice ${analysisResult.useImageIndex})`);
-    } catch (imgErr) {
-      err(`Error procesando matched garment:`, imgErr.message);
-      return res.status(500).json({ success: false, error: 'Error procesando matched garment' });
-    }
+      const productMB = productBuf.length / 1024 / 1024;
+      const userMB = processedUserImage.length / 1024 / 1024;
+      const totalMB = userMB + productMB;
 
-    // Agregar context image si existe
-    if (analysisResult.additionalContextIndex !== null) {
-      try {
-        const contextImage = productImagesArray[analysisResult.additionalContextIndex];
-        const parsed = parseDataUrl(contextImage);
-        if (parsed) {
-          const contextBuf = await normalizeToJpegBuffer(parsed.base64);
-          parts.push({ inlineData: { mimeType: 'image/jpeg', data: contextBuf.toString('base64') } });
-          log(`✅ Context image agregada (índice ${analysisResult.additionalContextIndex})`);
-        }
-      } catch (contextErr) {
-        warn(`⚠️ Error procesando context image, continuando sin ella:`, contextErr.message);
+      if (totalMB > 15) {
+        warn(`⚠️ Total imágenes > 15MB (${totalMB.toFixed(2)} MB)`);
       }
-    } else {
-      log(`ℹ️ No hay context image adicional`);
+
+      parts.push({ inlineData: { mimeType: 'image/jpeg', data: productBuf.toString('base64') } });
+      log(`✅ Imagen producto seleccionada procesada: ${(productBuf.length/1024).toFixed(2)} KB`);
+    } catch (imgErr) {
+      err(`Error procesando imagen del producto seleccionada:`, imgErr.message);
+      return res.status(500).json({ success: false, error: 'Error procesando imagen del producto' });
     }
 
-    const totalParts = parts.length - 1; // -1 por el prompt
-    log(`📤 Enviando ${totalParts} imágenes a Nano Banana`);
+    log(`📤 Parts a enviar a Nano Banana: ${parts.length} imágenes (1 usuario + 1 producto)`);
+    const userSizeMB = processedUserImage.length / 1024 / 1024;
+    const productSizeMB = parts[2]?.inlineData?.data ? (Buffer.from(parts[2].inlineData.data, 'base64').length / 1024 / 1024) : 0;
+    const totalSizeMB = userSizeMB + productSizeMB;
+    log(`📊 Tamaño total: ${totalSizeMB.toFixed(2)} MB (usuario: ${userSizeMB.toFixed(2)} MB, producto: ${productSizeMB.toFixed(2)} MB)`);
+    log(`📋 Request ID: ${requestId}`);
 
-    // Inicializar Gemini para generación
+    // Inicializar Gemini AI para generación
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
+    
+    // Inicializar modelo de generación: Nano Banana (gemini-2.5-flash-image)
     const generationModel = genAI.getGenerativeModel({ 
       model: GENERATION_MODEL,
       generationConfig: {
-        temperature: 0.4,
+        temperature: 0.4, // Más determinístico para mejor precisión
         topP: 0.95,
         topK: 40,
       }
     });
 
-    // Llamada a Nano Banana
+    // Llamada a Nano Banana para generación
     let result, response;
     try {
-      log(`📤 Enviando solicitud a Nano Banana...`);
+      log(`📤 Enviando solicitud a Nano Banana (${GENERATION_MODEL}) para generación...`);
+      log(`📋 Request ID: ${requestId}`);
       const requestStartTime = Date.now();
 
+      // Formato según nueva documentación: contents con array de parts
       result = await generationModel.generateContent({ 
         contents: [{ 
           role: 'user', 
@@ -731,34 +917,49 @@ export default async function handler(req, res) {
 
       response = await result.response;
       const requestDuration = Date.now() - requestStartTime;
-      log(`✅ Respuesta recibida en ${requestDuration}ms`);
+      log(`✅ Respuesta recibida de Nano Banana en ${requestDuration}ms`);
+      log(`📋 Request ID: ${requestId}`);
 
       if (!response) throw new Error('Sin respuesta de Gemini');
 
-      // Verificar finish reason
+      // Log básico de la estructura de la respuesta
+      log('Response structure:', {
+        hasCandidates: !!response.candidates,
+        candidatesCount: response.candidates?.length || 0,
+        firstCandidateHasContent: !!response.candidates?.[0]?.content,
+        firstCandidatePartsCount: response.candidates?.[0]?.content?.parts?.length || 0
+      });
+
+      // Verificar si hay bloqueos de seguridad o errores
       if (response.candidates?.[0]?.finishReason) {
         const finishReason = response.candidates[0].finishReason;
         log(`Finish reason: ${finishReason}`);
         
         if (finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS') {
+          warn(`⚠️ Finish reason inesperado: ${finishReason}`);
           if (finishReason === 'SAFETY') {
-            throw new Error('Contenido bloqueado por filtros de seguridad');
+            throw new Error('Contenido bloqueado por filtros de seguridad de Google AI');
           }
           if (finishReason === 'RECITATION') {
-            throw new Error('Contenido bloqueado por políticas de recitación');
+            throw new Error('Contenido bloqueado por políticas de recitación de Google AI');
           }
         }
       }
 
-      // Verificar prompt feedback
-      if (response.promptFeedback?.blockReason) {
-        throw new Error(`Prompt bloqueado: ${response.promptFeedback.blockReason}`);
+      // Verificar si hay bloqueos de seguridad en otros lugares
+      if (response.promptFeedback) {
+        log('Prompt feedback:', response.promptFeedback);
+        if (response.promptFeedback.blockReason) {
+          warn(`⚠️ Prompt bloqueado: ${response.promptFeedback.blockReason}`);
+          throw new Error(`Prompt bloqueado por Google AI: ${response.promptFeedback.blockReason}`);
+        }
       }
     } catch (aiError) {
+      // Clasificación de errores
       const msg = aiError?.message || '';
-      if (msg.includes('SAFETY')) throw new Error('Contenido bloqueado por filtros de seguridad');
-      if (msg.includes('QUOTA')) throw new Error('Límite de cuota excedido');
-      if (msg.toLowerCase().includes('timeout')) throw new Error('Timeout en generación');
+      if (msg.includes('SAFETY')) throw new Error('Contenido bloqueado por filtros de seguridad de Google AI');
+      if (msg.includes('QUOTA')) throw new Error('Límite de cuota de Google AI excedido. Intenta más tarde.');
+      if (msg.toLowerCase().includes('timeout')) throw new Error('La solicitud a Google AI tardó demasiado tiempo. Intenta con menos imágenes.');
       throw aiError;
     }
 
@@ -766,8 +967,28 @@ export default async function handler(req, res) {
     const imageBase64 = safePickGeneratedImage(response);
     
     if (!imageBase64 || typeof imageBase64 !== 'string' || imageBase64.length < 100) {
-      log('⚠️ No se pudo extraer imagen de la respuesta');
-      
+      // Log detallado de la respuesta para diagnóstico
+      log('⚠️ No se pudo extraer imagen de la respuesta de Google AI');
+      log('Response structure:', {
+        hasResponse: !!response,
+        hasCandidates: !!response?.candidates,
+        candidatesLength: response?.candidates?.length || 0,
+        firstCandidate: response?.candidates?.[0] ? {
+          hasContent: !!response.candidates[0].content,
+          hasParts: !!response.candidates[0].content?.parts,
+          partsLength: response.candidates[0].content?.parts?.length || 0,
+          partsTypes: response.candidates[0].content?.parts?.map(p => ({
+            hasInlineData: !!p?.inlineData,
+            hasInline_data: !!p?.inline_data,
+            hasText: !!p?.text,
+            textPreview: p?.text ? p.text.substring(0, 100) : null
+          })) || []
+        } : null,
+        hasOutput: !!response?.output,
+        outputLength: response?.output?.length || 0
+      });
+
+      // Si hay texto en la respuesta, loguearlo
       if (response?.candidates?.[0]?.content?.parts) {
         const textParts = response.candidates[0].content.parts.filter(p => p?.text);
         if (textParts.length > 0) {
@@ -777,73 +998,174 @@ export default async function handler(req, res) {
           });
         }
       }
+
+      if (IS_DEV) {
+        log('Respuesta cruda completa:', JSON.stringify(response, null, 2));
+      }
       
-      throw new Error('No se pudo extraer imagen generada');
+      throw new Error('No se pudo extraer la imagen generada (imageData vacío o inválido). La IA puede haber retornado texto en lugar de una imagen.');
     }
 
     log('✅ Imagen generada exitosamente');
+    log(`📋 Request ID: ${requestId}`);
     log('═══════════════════════════════════════════════════════════════');
     log(`✅ REQUEST COMPLETADO [${requestId}]`);
     log('═══════════════════════════════════════════════════════════════');
     
+    // Asegurar que requestId y model siempre estén presentes
     const responseData = {
       success: true,
       description: 'Imagen generada exitosamente con IA',
       generatedImage: `data:image/jpeg;base64,${imageBase64}`,
       size: size || 'M',
-      model: GENERATION_MODEL,
-      requestId: requestId,
+      orientation: selectedOrientation,
+      model: GENERATION_MODEL || 'gemini-2.5-flash-image', // Fallback por si acaso
+      requestId: requestId || `req_${Date.now()}_fallback`, // Fallback por si acaso
       timestamp: new Date().toISOString(),
-      analysis: {
-        matchedGarmentIndex: analysisResult.useImageIndex,
-        contextImageIndex: analysisResult.additionalContextIndex,
-        confidence: analysisResult.confidence,
-        overallStyle: analysisResult.fit_style?.overall_style || 'N/A',
-        totalImagesUsed: totalParts
-      }
     };
     
-    log('📤 Enviando respuesta al frontend');
+    // Validar que los campos críticos estén presentes
+    if (!responseData.requestId) {
+      warn('⚠️ requestId no está definido, usando fallback');
+      responseData.requestId = `req_${Date.now()}_fallback`;
+    }
+    if (!responseData.model) {
+      warn('⚠️ model no está definido, usando fallback');
+      responseData.model = GENERATION_MODEL || 'gemini-2.5-flash-image';
+    }
+    
+    log('📤 Enviando respuesta al frontend:');
+    log(`   - success: ${responseData.success}`);
+    log(`   - model: ${responseData.model} (tipo: ${typeof responseData.model})`);
+    log(`   - requestId: ${responseData.requestId} (tipo: ${typeof responseData.requestId})`);
+    log(`   - generatedImage length: ${responseData.generatedImage.length} caracteres`);
+    log(`   - size: ${responseData.size}`);
+    log(`   - orientation: ${responseData.orientation}`);
+    log(`   - timestamp: ${responseData.timestamp}`);
+    
+    // Verificar que los campos críticos existen antes de enviar
+    const keys = Object.keys(responseData);
+    log(`📋 Claves en responseData: ${keys.join(', ')}`);
+    log(`✅ Verificación: requestId presente: ${!!responseData.requestId}, model presente: ${!!responseData.model}`);
+    
+    // Log del objeto completo para debugging (sin generatedImage por tamaño)
+    const debugResponse = {
+      ...responseData,
+      generatedImage: `[${responseData.generatedImage.length} caracteres]`
+    };
+    log('📋 Objeto de respuesta completo (sin generatedImage por tamaño):', JSON.stringify(debugResponse, null, 2));
+    
+    // Verificación final antes de enviar
+    if (!responseData.requestId || !responseData.model) {
+      err('❌ ERROR CRÍTICO: requestId o model faltan en la respuesta');
+      err(`   requestId: ${responseData.requestId}`);
+      err(`   model: ${responseData.model}`);
+      err(`   requestId original: ${requestId}`);
+      err(`   GENERATION_MODEL: ${GENERATION_MODEL}`);
+    }
+    
     return res.json(responseData);
 
   } catch (error) {
-    const errorType = error.message.includes('SAFETY') ? 'SAFETY_ERROR' :
-                     error.message.includes('QUOTA') ? 'QUOTA_ERROR' :
-                     error.message.includes('timeout') ? 'TIMEOUT_ERROR' : 'UNKNOWN';
+    // Diagnóstico extendido
+    const body = req.body || {};
+    const hasUser = !!body.userImage;
+    const userLen = typeof body.userImage === 'string' ? body.userImage.length : 0;
+    const prodCount = Array.isArray(body.productImages) ? body.productImages.length : 0;
+
+    let errorType = 'UNKNOWN';
+    let errorDescription = error.message || 'Error desconocido';
+    const msg = (errorDescription || '').toUpperCase();
+
+    if (msg.includes('GOOGLE AI')) errorType = 'GOOGLE_AI_ERROR';
+    if (msg.includes('IMAGEN') || msg.includes('IMAGE')) errorType = 'IMAGE_PROCESSING_ERROR';
+    if (msg.includes('TIMEOUT')) errorType = 'TIMEOUT_ERROR';
+    if (msg.includes('CUOTA') || msg.includes('QUOTA')) errorType = 'QUOTA_ERROR';
+    if (msg.includes('SEGURIDAD') || msg.includes('SAFETY')) errorType = 'SAFETY_ERROR';
 
     err('═══════════════════════════════════════════════════════════════');
-    err(`❌ ERROR [${requestId}]`);
-    err(`🔴 Tipo: ${errorType}`);
-    err(`🔴 Mensaje: ${error.message}`);
+    err(`❌ ERROR EN AI TRY-ON [${requestId}]`);
+    err('═══════════════════════════════════════════════════════════════');
+    err('📋 Request ID:', requestId);
+    err('🔴 Tipo:', errorType);
+    err('🔴 Mensaje:', errorDescription);
+    err('🔴 Stack:', error.stack);
+    err('📊 Request info:');
+    err('   - userImage:', hasUser, `(${(userLen / 1024).toFixed(2)} KB)`);
+    err('   - productImages:', prodCount, 'imágenes');
+    err('   - productImage:', !!body.productImage ? 'SÍ' : 'NO');
+    err('   - size:', body.size || 'M (default)');
+    err('   - userOrientation:', body.userOrientation || 'null');
     err('═══════════════════════════════════════════════════════════════');
 
-    // Fallback
+    // Fallback enriquecido
     try {
-      if (!req.body?.userImage) {
-        return res.status(400).json({
+      console.log('[VERCEL-LOG] ===========================================');
+      console.log(`[VERCEL-LOG] ENTRANDO EN MODO FALLBACK [${requestId}]`);
+      console.log('[VERCEL-LOG] ===========================================');
+      console.log(`[VERCEL-LOG] Error Type: ${errorType}`);
+      console.log(`[VERCEL-LOG] Error Description: ${errorDescription}`);
+      console.log(`[VERCEL-LOG] Request ID: ${requestId}`);
+      
+      if (!hasUser) {
+        const errorResponse = {
           success: false,
-          error: error.message,
+          error: 'No se recibió imagen del usuario y no se pudo generar la imagen',
           errorType,
-        });
+          errorDetails: errorDescription,
+          requestId: requestId,
+          model: 'fallback',
+        };
+        console.log('[VERCEL-LOG] Enviando error 400:', JSON.stringify({ ...errorResponse, errorDetails: errorResponse.errorDetails.substring(0, 100) }));
+        return res.status(400).json(errorResponse);
       }
 
-      return res.json({
+      const fallbackResponse = {
         success: true,
         description: 'Imagen procesada (modo fallback)',
-        generatedImage: req.body.userImage,
-        size: req.body.size || 'M',
+        originalImage: body.userImage,
+        generatedImage: body.userImage,
+        finalImage: body.userImage,
+        size: body.size || 'M',
+        orientation: ALLOWED_ORIENTATIONS.has(body.userOrientation) ? body.userOrientation : 'front',
         model: 'fallback',
-        requestId: requestId,
+        requestId: requestId || `req_${Date.now()}_fallback`,
         fallback: true,
-        errorReason: error.message,
+        errorType,
+        errorReason: errorDescription,
         timestamp: new Date().toISOString(),
-      });
+      };
+      
+      // Validar que requestId y model estén presentes
+      if (!fallbackResponse.requestId) {
+        warn('⚠️ requestId no está definido en fallback, usando fallback');
+        fallbackResponse.requestId = `req_${Date.now()}_fallback`;
+      }
+      if (!fallbackResponse.model) {
+        warn('⚠️ model no está definido en fallback, usando fallback');
+        fallbackResponse.model = 'fallback';
+      }
+      
+      console.log('[VERCEL-LOG] ===========================================');
+      console.log(`[VERCEL-LOG] ENVIANDO RESPUESTA FALLBACK [${requestId}]`);
+      console.log('[VERCEL-LOG] ===========================================');
+      console.log(`[VERCEL-LOG] success: ${fallbackResponse.success}`);
+      console.log(`[VERCEL-LOG] model: ${fallbackResponse.model} (tipo: ${typeof fallbackResponse.model})`);
+      console.log(`[VERCEL-LOG] requestId: ${fallbackResponse.requestId} (tipo: ${typeof fallbackResponse.requestId})`);
+      console.log(`[VERCEL-LOG] fallback: ${fallbackResponse.fallback}`);
+      console.log(`[VERCEL-LOG] Claves en respuesta: ${Object.keys(fallbackResponse).join(', ')}`);
+      
+      return res.json(fallbackResponse);
     } catch (fallbackErr) {
+      err('Fallback error:', fallbackErr.message);
       return res.status(500).json({
         success: false,
-        error: error.message,
+        error: 'Error procesando imagen',
         errorType,
+        errorDetails: errorDescription,
+        fallbackError: fallbackErr.message,
       });
     }
   }
 }
+

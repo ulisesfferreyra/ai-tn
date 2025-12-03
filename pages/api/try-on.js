@@ -503,24 +503,47 @@ CRITICAL RULES:
         throw new Error('JSON structure invalid: missing user_image or garment_image');
       }
       
-      // Validar índices (OpenAI retorna índices basados en 1, nosotros usamos basados en 0)
-      // user_image.index: 1 = usuario (índice 0 en nuestro array)
-      // garment_image.index: 2, 3, 4 = productos (índices 0, 1, 2 en nuestro array)
+      // Validar índices - OpenAI puede retornar índices basados en 0 o en 1
+      // Detectamos automáticamente según el valor de user_image.index
       const userIndex = analysisData.user_image.index;
       const garmentIndex = analysisData.garment_image.index;
       
-      // Validar que user_index sea 1 (usuario)
-      if (userIndex !== 1) {
-        warn(`⚠️ user_image.index debe ser 1, recibido: ${userIndex}`);
+      // Detectar si OpenAI usa índices basados en 0 o en 1
+      // Si user_image.index es 0, entonces usa índices basados en 0
+      // Si user_image.index es 1, entonces usa índices basados en 1
+      const isZeroBased = userIndex === 0;
+      
+      if (isZeroBased) {
+        log(`📊 OpenAI usa índices basados en 0 (user_index: ${userIndex})`);
+      } else if (userIndex === 1) {
+        log(`📊 OpenAI usa índices basados en 1 (user_index: ${userIndex})`);
+      } else {
+        warn(`⚠️ user_image.index inesperado: ${userIndex}, asumiendo índices basados en 0`);
       }
       
-      // Convertir garment_index a índice de array (Image 2 = índice 0, Image 3 = índice 1, Image 4 = índice 2)
+      // Convertir garment_index a índice de array de productos
       let useImageIndex = 0;
-      if (garmentIndex >= 2 && garmentIndex <= 4) {
-        useImageIndex = garmentIndex - 2; // Convertir a índice de array
+      
+      if (isZeroBased) {
+        // Índices basados en 0: user=0, product1=1, product2=2, product3=3
+        // garmentIndex 1 → array índice 0, garmentIndex 2 → array índice 1, etc.
+        if (garmentIndex >= 1 && garmentIndex <= 3) {
+          useImageIndex = garmentIndex - 1;
+          log(`📊 Conversión (base 0): garmentIndex ${garmentIndex} → array índice ${useImageIndex}`);
+        } else {
+          warn(`⚠️ garment_image.index inválido para base 0: ${garmentIndex}, usando primera imagen`);
+          useImageIndex = 0;
+        }
       } else {
-        warn(`⚠️ garment_image.index inválido: ${garmentIndex}, usando primera imagen`);
-        useImageIndex = 0;
+        // Índices basados en 1: user=1, product1=2, product2=3, product3=4
+        // garmentIndex 2 → array índice 0, garmentIndex 3 → array índice 1, etc.
+        if (garmentIndex >= 2 && garmentIndex <= 4) {
+          useImageIndex = garmentIndex - 2;
+          log(`📊 Conversión (base 1): garmentIndex ${garmentIndex} → array índice ${useImageIndex}`);
+        } else {
+          warn(`⚠️ garment_image.index inválido para base 1: ${garmentIndex}, usando primera imagen`);
+          useImageIndex = 0;
+        }
       }
       
       // Validar que el índice esté dentro del rango del array

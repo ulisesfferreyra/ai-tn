@@ -304,104 +304,104 @@ async function analyzeProductImages(userImageBase64, productImagesArray) {
 
   const analysisPrompt = `You will receive multiple images: some showing a USER/PERSON and others showing a GARMENT (clothing product).
 
-Your task: Create a JSON output that Nanobanana will use to generate a virtual try-on image by replacing the user's garment with the correct garment view.
+Your task: Create a JSON output that will be used to generate a virtual try-on image. You must DETECT and DESCRIBE everything dynamically - never assume anything about the garment type.
 
 CRITICAL - FOLLOW THIS EXACT SEQUENCE:
 
 STEP 1: IDENTIFY THE USER IMAGE
-
 - Find the image showing the person who needs garment replacement
-
 - Determine their pose orientation: are they facing camera (front) or facing away (back)?
 
-- Note: This tells us which garment view we need
-
 STEP 2: IDENTIFY ALL GARMENT IMAGES
-
-- Find all images showing the garment (may include model wearing it, flat lays, or different angles)
-
-- For each garment image, determine: is this showing the FRONT or BACK of the garment?
+- Find all images showing the garment
+- For each garment image, determine: FRONT or BACK view?
 
 STEP 3: MATCH GARMENT ORIENTATION TO USER ORIENTATION
+- User facing camera (front) → select FRONT view of garment
+- User facing away (back) → select BACK view of garment
 
-- If user is facing camera (front pose) → select garment image showing FRONT view
+STEP 4: DYNAMICALLY DETECT GARMENT TYPE AND ALL CHARACTERISTICS
+This is CRITICAL - you must detect and describe EXACTLY what you see, not assume anything:
 
-- If user is facing away (back pose) → select garment image showing BACK view
+A) GARMENT TYPE (detect exactly what it is):
+   - t-shirt, tank top/sleeveless, muscle tee, crop top, long sleeve shirt, hoodie, sweatshirt, jacket, vest, polo, button-up shirt, etc.
 
-- CRITICAL: The garment orientation MUST match the user's pose orientation
+B) SLEEVE CHARACTERISTICS (detect exactly):
+   - none/sleeveless (NO sleeves at all - like tank tops, muscle tees)
+   - cap sleeves (very short, just covering shoulders)
+   - short sleeves (typical t-shirt length)
+   - 3/4 sleeves (below elbow)
+   - long sleeves (full length to wrist)
+   - rolled up sleeves
+   - etc.
 
-STEP 4: HOW TO IDENTIFY GARMENT FRONT vs BACK:
+C) NECKLINE TYPE (detect exactly):
+   - crew neck (round)
+   - v-neck
+   - scoop neck
+   - high neck/mock neck
+   - hoodie with hood
+   - collar (polo or button-up)
+   - etc.
 
-- If person wearing garment is facing camera → what's on their CHEST = FRONT
+D) FIT AND LENGTH (detect exactly):
+   - Body fit: skin-tight, fitted, regular, relaxed, loose, oversized, boxy
+   - Length: cropped (above waist), regular, long/tunic, oversized
 
-- If person wearing garment is facing away → what's on their BACK = BACK
+E) MATERIAL APPEARANCE (if visible):
+   - Cotton, jersey, denim, leather, knit, etc.
 
-- For flat lays: analyze garment structure, neckline, collar, tag placement
+F) COLOR(S):
+   - Primary color, secondary colors, patterns
 
-- DO NOT assume large graphics = front (they can be on back)
-
-- DO NOT use design complexity to determine orientation
-
-STEP 5: ANALYZE THE GARMENT FIT/STYLE
-
-- Look at how the garment fits on ANY model in the images
-
-- Measure fit characteristics:
-
-  * Sleeve length: short/regular/long/oversized
-
-  * Body fit: tight/regular/loose/oversized/boxy
-
-  * Garment length: cropped/regular/long/oversized
-
-- If no model present, analyze garment structure and proportions
-
-STEP 6: CAPTURE DESIGN DETAILS
-
-- Describe ALL visible design elements on the selected garment view
-
-- Include: graphics, text, logos, patterns, colors, placement
-
-- Note unique features that must be preserved in the virtual try-on
+STEP 5: CAPTURE ALL DESIGN DETAILS
+- Graphics, logos, text, prints, patterns
+- Exact placement (center chest, left chest, full front, back, etc.)
+- Any unique features (pockets, zippers, buttons, distressing, etc.)
 
 Return ONLY valid JSON (no additional text, no markdown, no code blocks):
 
 {
   "user_image": {
     "index": <number>,
-    "description": "<detailed description of user's pose: facing front/back, body position, arms position>"
+    "description": "<detailed description of user's pose>"
   },
   "garment_image": {
     "index": <number>,
-    "description": "<description of the garment view shown in this image>",
+    "description": "<description of the garment view>",
     "orientation": "<front/back>",
-    "reason": "<explain why this garment image matches the user's orientation>"
+    "reason": "<why this image matches user's orientation>"
+  },
+  "garment_type": {
+    "category": "<exact garment type: tank top, t-shirt, hoodie, etc.>",
+    "sleeves": "<none/sleeveless, cap, short, 3/4, long, etc.>",
+    "neckline": "<crew neck, v-neck, hoodie, collar, etc.>",
+    "material_appearance": "<cotton, jersey, knit, etc. or unknown>"
   },
   "fit_style": {
-    "sleeve_length": "<short/regular/long/oversized>",
-    "body_fit": "<tight/regular/loose/oversized/boxy>",
+    "body_fit": "<skin-tight/fitted/regular/relaxed/loose/oversized/boxy>",
     "garment_length": "<cropped/regular/long/oversized>"
   },
-  "design_details": {
-    "description": "<detailed description of ALL design elements visible on the selected garment view>",
-    "notable_features": "<unique identifiable features that must be preserved>"
+  "colors": {
+    "primary": "<main color>",
+    "secondary": "<other colors if any, or none>"
   },
-  "instruction": "<clear instruction for Nanobanana: 'Replace the garment on the user in image X (orientation) with the garment shown in image Y (orientation), maintaining the [fit_style] characteristics'>",
-  "reasoning": "<explain your analysis: which image is the user? what's their orientation? which garment image matches? how did you identify front/back?>",
+  "design_details": {
+    "description": "<ALL visible design elements: graphics, logos, text, patterns>",
+    "placement": "<where designs are located: center chest, left chest, full front, etc.>",
+    "notable_features": "<unique features: pockets, zippers, distressing, etc.>"
+  },
+  "generation_instruction": "<DETAILED instruction for image generation that includes ALL detected characteristics. Example: 'Dress the user with a BLACK SLEEVELESS TANK TOP (no sleeves) with crew neckline, regular fit, featuring a small red star logo on the left chest. The garment must have NO SLEEVES - this is critical.'>",
+  "reasoning": "<your analysis process>",
   "confidence": "<high/medium/low>"
 }
 
 CRITICAL RULES:
-
-- user_image.index and garment_image.index must be different
-
-- garment_image.orientation MUST match user's pose orientation
-
-- fit_style must accurately reflect how garment appears on any model
-
-- design_details must capture EVERY visible element for accurate replication
-
-- Output must be valid JSON only, no markdown formatting`;
+- DETECT everything dynamically - never assume the garment type
+- If it's SLEEVELESS, explicitly state "NO SLEEVES" in generation_instruction
+- If it has SHORT SLEEVES, explicitly state "SHORT SLEEVES" in generation_instruction
+- The generation_instruction must be detailed enough that someone could recreate the exact garment
+- Output must be valid JSON only`;
 
   try {
     // Construir mensajes para OpenAI
@@ -589,121 +589,113 @@ CRITICAL RULES:
 // PASO 2: Prompt para generación con Nano Banana usando datos del análisis
 // ───────────────────────────────────────────────────────────────────────────────
 function buildGenerationPrompt({ analysisData, size }) {
-  // Extraer datos del análisis
+  // Extraer datos del análisis - TODO ES DINÁMICO
   const userImage = analysisData.user_image || { description: 'Person facing camera' };
   const garmentImage = analysisData.garment_image || { description: 'Garment view', orientation: 'front', reason: 'Selected garment' };
-  const fitStyle = analysisData.fit_style || { sleeve_length: 'regular', body_fit: 'regular', garment_length: 'regular' };
-  const designDetails = analysisData.design_details || { description: 'Garment design', notable_features: 'Standard features' };
-  const instruction = analysisData.instruction || 'Replace the garment on the user with the product garment';
+  
+  // Nuevo: tipo de prenda detectado dinámicamente
+  const garmentType = analysisData.garment_type || { 
+    category: 'garment', 
+    sleeves: 'unknown', 
+    neckline: 'unknown',
+    material_appearance: 'unknown'
+  };
+  
+  const fitStyle = analysisData.fit_style || { body_fit: 'regular', garment_length: 'regular' };
+  const colors = analysisData.colors || { primary: 'unknown', secondary: 'none' };
+  const designDetails = analysisData.design_details || { description: 'Garment design', placement: 'unknown', notable_features: 'Standard features' };
+  
+  // CRÍTICO: La instrucción completa generada por OpenAI con TODOS los detalles
+  const generationInstruction = analysisData.generation_instruction || analysisData.instruction || 'Replace the garment on the user with the product garment';
   const confidence = analysisData.confidence || 'medium';
 
-  return `VIRTUAL TRY-ON TASK
+  // Construir descripción de mangas - CRÍTICO para sleeveless
+  let sleeveDescription = '';
+  const sleeves = garmentType.sleeves?.toLowerCase() || '';
+  if (sleeves.includes('none') || sleeves.includes('sleeveless') || sleeves.includes('tank')) {
+    sleeveDescription = '⚠️ THIS IS A SLEEVELESS GARMENT - NO SLEEVES AT ALL. Do NOT add any sleeves.';
+  } else if (sleeves.includes('cap')) {
+    sleeveDescription = 'Cap sleeves (very short, just covering shoulders)';
+  } else if (sleeves.includes('short')) {
+    sleeveDescription = 'Short sleeves (typical t-shirt length)';
+  } else if (sleeves.includes('3/4') || sleeves.includes('three')) {
+    sleeveDescription = '3/4 length sleeves (below elbow)';
+  } else if (sleeves.includes('long')) {
+    sleeveDescription = 'Long sleeves (full length to wrist)';
+  } else {
+    sleeveDescription = `Sleeves: ${garmentType.sleeves}`;
+  }
 
-You will receive TWO images that have been pre-analyzed and matched:
+  return `VIRTUAL TRY-ON TASK - DYNAMIC GARMENT DETECTION
 
-1. USER IMAGE: Person in specific pose (facing front or back)
+You will receive TWO images:
+1. USER IMAGE: The person to dress
+2. GARMENT IMAGE: The exact garment to put on the user
 
-2. GARMENT IMAGE: The exact garment view that matches the user's orientation
+═══════════════════════════════════════════════════════════════
+DYNAMICALLY DETECTED GARMENT SPECIFICATIONS (DO NOT DEVIATE):
+═══════════════════════════════════════════════════════════════
 
-PRE-ANALYSIS CONTEXT:
+GARMENT TYPE: ${garmentType.category}
+${sleeveDescription}
+NECKLINE: ${garmentType.neckline}
+MATERIAL: ${garmentType.material_appearance}
 
-User Pose: ${userImage.description}
-
-Garment View: ${garmentImage.description} (${garmentImage.orientation})
-
-Match Reasoning: ${garmentImage.reason}
-
-GARMENT FIT SPECIFICATIONS:
-
-- Sleeve length: ${fitStyle.sleeve_length}
-
+FIT:
 - Body fit: ${fitStyle.body_fit}
+- Length: ${fitStyle.garment_length}
 
-- Garment length: ${fitStyle.garment_length}
+COLORS:
+- Primary: ${colors.primary}
+- Secondary: ${colors.secondary}
 
-GARMENT DESIGN TO REPLICATE:
-
+DESIGN ELEMENTS:
 ${designDetails.description}
+- Placement: ${designDetails.placement}
+- Notable features: ${designDetails.notable_features}
 
-Critical Features: ${designDetails.notable_features}
+═══════════════════════════════════════════════════════════════
+MAIN INSTRUCTION (FOLLOW EXACTLY):
+═══════════════════════════════════════════════════════════════
 
-YOUR TASK:
+${generationInstruction}
 
-${instruction}
+═══════════════════════════════════════════════════════════════
+MANDATORY RULES:
+═══════════════════════════════════════════════════════════════
 
-MANDATORY EXECUTION RULES:
+✓ USER PRESERVATION (DO NOT CHANGE):
+  - User's face, expression, features → KEEP IDENTICAL
+  - User's pose and body position → KEEP IDENTICAL
+  - User's arms and hands → KEEP IDENTICAL
+  - Background and lighting → KEEP IDENTICAL
 
-✓ USER PRESERVATION (ZERO TOLERANCE):
+✓ GARMENT APPLICATION (CRITICAL):
+  - Apply the EXACT garment type detected: ${garmentType.category}
+  - ${sleeveDescription}
+  - Use the EXACT neckline: ${garmentType.neckline}
+  - Apply the EXACT fit: ${fitStyle.body_fit}, ${fitStyle.garment_length}
+  - Use the EXACT colors: ${colors.primary}${colors.secondary !== 'none' ? ', ' + colors.secondary : ''}
 
- - Keep user's EXACT pose: ${userImage.description}
-
- - Keep user's EXACT face, expression, features (100% recognizable)
-
- - Keep user's EXACT arms, hands, body position (no movement)
-
- - Keep EXACT background, lighting, environment (unchanged)
-
-✓ GARMENT REPLACEMENT:
-
- - Replace ONLY the user's existing garment with the product garment
-
- - Apply garment with these EXACT fit characteristics:
-
-  * Sleeves: ${fitStyle.sleeve_length} - do not adjust
-
-  * Body: ${fitStyle.body_fit} - do not tighten or loosen
-
-  * Length: ${fitStyle.garment_length} - do not shorten or extend
-
-✓ DESIGN ACCURACY:
-
- - Replicate EVERY design element: ${designDetails.description}
-
- - Preserve all notable features: ${designDetails.notable_features}
-
- - Match exact colors, patterns, graphics, text, placement
-
- - No design elements should be missing, distorted, or altered
-
-✓ ORIENTATION CORRECTNESS:
-
- - User orientation: ${userImage.description}
-
- - Garment orientation: ${garmentImage.orientation}
-
- - These MUST align (front-to-front OR back-to-back)
-
- - Do NOT mix orientations or flip designs
+✓ DESIGN REPLICATION (100% ACCURATE):
+  - Copy ALL graphics, logos, text EXACTLY as shown
+  - Place designs in the EXACT position: ${designDetails.placement}
+  - Preserve ALL notable features: ${designDetails.notable_features}
 
 ✓ REALISM:
+  - Photorealistic quality
+  - Natural fabric drape and shadows
+  - Seamless body-garment integration
 
- - Photorealistic output quality
+⚠️ CRITICAL WARNINGS:
+- If garment is SLEEVELESS → generate with NO SLEEVES (not short sleeves, NO sleeves)
+- If garment has SHORT SLEEVES → generate with SHORT SLEEVES (not long, not sleeveless)
+- The garment type MUST match exactly what was detected
+- DO NOT add or remove features that weren't in the original garment
 
- - Natural fabric drape, wrinkles, shadows
+OUTPUT: Generate ONE photorealistic image of the user wearing the exact garment as specified above.
 
- - Proper garment-body interaction
-
- - Seamless integration with user's body
-
-CRITICAL GUARDRAILS:
-
-- If user's pose changes → REFUSE
-
-- If face becomes unrecognizable → REFUSE
-
-- If background changes → REFUSE
-
-- If fit specifications cannot be met → REFUSE
-
-- If design elements are incomplete → REFUSE
-
-- If orientation mismatch occurs → REFUSE
-
-OUTPUT REQUIREMENT:
-
-Generate a photorealistic image showing the user in their EXACT original pose and environment, now wearing the garment with PERFECT design replication and EXACT fit specifications. The result must be indistinguishable from a real photo of this person wearing this garment.
-
-Analysis Confidence Level: ${confidence}`.trim();
+Analysis Confidence: ${confidence}`.trim();
 }
 
 // ───────────────────────────────────────────────────────────────────────────────

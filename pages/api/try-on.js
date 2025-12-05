@@ -359,6 +359,28 @@ STEP 5: CAPTURE ALL DESIGN DETAILS
 - Exact placement (center chest, left chest, full front, back, etc.)
 - Any unique features (pockets, zippers, buttons, distressing, etc.)
 
+STEP 6: ANALYZE HOW THE GARMENT FITS ON THE MODEL (CRITICAL FOR REPLICATION)
+If there's a model wearing the garment in any of the product images, analyze EXACTLY how it fits:
+
+A) SLEEVE LENGTH ON BODY (if applicable):
+   - Where do sleeves end relative to arm? (shoulder, mid-bicep, elbow, mid-forearm, wrist)
+   - Are they tight or loose on the arm?
+
+B) TORSO FIT:
+   - How does it fit on chest/torso? (skin-tight, fitted, slightly loose, very loose, boxy)
+   - Does it show body shape or hide it?
+
+C) GARMENT LENGTH ON BODY:
+   - Where does the garment end? (above waist, at waist, below waist, at hips, mid-thigh)
+   - Is it tucked in or hanging loose?
+
+D) SHOULDER FIT:
+   - Do shoulders align with model's shoulders or are they dropped/oversized?
+   - For sleeveless: how wide are the arm openings?
+
+E) OVERALL SILHOUETTE:
+   - Describe the overall shape/silhouette when worn
+
 Return ONLY valid JSON (no additional text, no markdown, no code blocks):
 
 {
@@ -382,6 +404,15 @@ Return ONLY valid JSON (no additional text, no markdown, no code blocks):
     "body_fit": "<skin-tight/fitted/regular/relaxed/loose/oversized/boxy>",
     "garment_length": "<cropped/regular/long/oversized>"
   },
+  "how_it_fits_on_model": {
+    "sleeve_end_point": "<shoulder/mid-bicep/elbow/mid-forearm/wrist/not applicable for sleeveless>",
+    "sleeve_tightness": "<tight on arm/fitted/loose/very loose/not applicable>",
+    "torso_fit": "<skin-tight/fitted/slightly loose/loose/very loose/boxy>",
+    "garment_end_point": "<above waist/at waist/below waist/at hips/mid-thigh>",
+    "shoulder_fit": "<aligned with shoulders/slightly dropped/dropped/oversized>",
+    "arm_opening_width": "<narrow/medium/wide - for sleeveless garments>",
+    "overall_silhouette": "<describe the shape when worn: fitted and body-hugging / relaxed and comfortable / oversized and boxy / etc.>"
+  },
   "colors": {
     "primary": "<main color>",
     "secondary": "<other colors if any, or none>"
@@ -391,7 +422,7 @@ Return ONLY valid JSON (no additional text, no markdown, no code blocks):
     "placement": "<where designs are located: center chest, left chest, full front, etc.>",
     "notable_features": "<unique features: pockets, zippers, distressing, etc.>"
   },
-  "generation_instruction": "<DETAILED instruction for image generation that includes ALL detected characteristics. Example: 'Dress the user with a BLACK SLEEVELESS TANK TOP (no sleeves) with crew neckline, regular fit, featuring a small red star logo on the left chest. The garment must have NO SLEEVES - this is critical.'>",
+  "generation_instruction": "<DETAILED instruction that includes ALL characteristics AND how it should fit. Example: 'Dress the user with a BLACK SLEEVELESS TANK TOP with NO SLEEVES, crew neckline, WIDE arm openings, relaxed boxy fit that ends at the hips. The garment should drape loosely on the torso, not fitted. Small red star logo on left chest. CRITICAL: No sleeves, wide arm openings, loose fit ending at hips - exactly as shown on the model.'>",
   "reasoning": "<your analysis process>",
   "confidence": "<high/medium/low>"
 }
@@ -605,6 +636,17 @@ function buildGenerationPrompt({ analysisData, size }) {
   const colors = analysisData.colors || { primary: 'unknown', secondary: 'none' };
   const designDetails = analysisData.design_details || { description: 'Garment design', placement: 'unknown', notable_features: 'Standard features' };
   
+  // NUEVO: Cómo le queda la prenda al modelo
+  const howItFits = analysisData.how_it_fits_on_model || {
+    sleeve_end_point: 'unknown',
+    sleeve_tightness: 'unknown',
+    torso_fit: 'unknown',
+    garment_end_point: 'unknown',
+    shoulder_fit: 'unknown',
+    arm_opening_width: 'unknown',
+    overall_silhouette: 'unknown'
+  };
+  
   // CRÍTICO: La instrucción completa generada por OpenAI con TODOS los detalles
   const generationInstruction = analysisData.generation_instruction || analysisData.instruction || 'Replace the garment on the user with the product garment';
   const confidence = analysisData.confidence || 'medium';
@@ -624,6 +666,28 @@ function buildGenerationPrompt({ analysisData, size }) {
     sleeveDescription = 'Long sleeves (full length to wrist)';
   } else {
     sleeveDescription = `Sleeves: ${garmentType.sleeves}`;
+  }
+
+  // Construir descripción de cómo debe quedar (basado en el modelo)
+  let fitOnBodyDescription = '';
+  if (howItFits.overall_silhouette !== 'unknown') {
+    fitOnBodyDescription = `
+═══════════════════════════════════════════════════════════════
+HOW THE GARMENT SHOULD FIT (COPY EXACTLY FROM MODEL):
+═══════════════════════════════════════════════════════════════
+
+The garment MUST look EXACTLY like it does on the model in the product photos:
+
+- SLEEVES END AT: ${howItFits.sleeve_end_point}
+- SLEEVE TIGHTNESS: ${howItFits.sleeve_tightness}
+- TORSO FIT: ${howItFits.torso_fit}
+- GARMENT ENDS AT: ${howItFits.garment_end_point}
+- SHOULDER FIT: ${howItFits.shoulder_fit}
+- ARM OPENING WIDTH: ${howItFits.arm_opening_width}
+- OVERALL SILHOUETTE: ${howItFits.overall_silhouette}
+
+⚠️ CRITICAL: Replicate the EXACT same fit as shown on the model. If the garment is loose/boxy on the model, it must be loose/boxy on the user. If sleeves end at mid-bicep on the model, they must end at mid-bicep on the user.
+`;
   }
 
   return `VIRTUAL TRY-ON TASK - DYNAMIC GARMENT DETECTION
@@ -653,7 +717,7 @@ DESIGN ELEMENTS:
 ${designDetails.description}
 - Placement: ${designDetails.placement}
 - Notable features: ${designDetails.notable_features}
-
+${fitOnBodyDescription}
 ═══════════════════════════════════════════════════════════════
 MAIN INSTRUCTION (FOLLOW EXACTLY):
 ═══════════════════════════════════════════════════════════════
@@ -676,6 +740,7 @@ MANDATORY RULES:
   - Use the EXACT neckline: ${garmentType.neckline}
   - Apply the EXACT fit: ${fitStyle.body_fit}, ${fitStyle.garment_length}
   - Use the EXACT colors: ${colors.primary}${colors.secondary !== 'none' ? ', ' + colors.secondary : ''}
+  - MATCH the fit from the model: ${howItFits.overall_silhouette}
 
 ✓ DESIGN REPLICATION (100% ACCURATE):
   - Copy ALL graphics, logos, text EXACTLY as shown

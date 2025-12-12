@@ -1,0 +1,5 @@
+- Consolidar configuracion en un solo objeto (modelos, limites MB, max imagenes) y leerlo de env para evitar literales repartidos entre prompts y validaciones.
+- Agregar requestId obligatorio y logging estructurado (JSON) para CloudWatch; facilita correlacion y alarmas sin depender de IS_DEV.
+- Proteger memoria: validar tamaño base64 antes de Buffer.from y rechazar entradas fuera de limite con mensaje 400; hoy se parsea y se descarta despues.
+- Cubrir errores de proveedor: mapear finishReason/PromptFeedback a codigos especificos y tests unitarios de safePickGeneratedImage con mocks de respuestas de Gemini/OpenAI.
+- Considerar firma comun reusable (p. ej. schemas con zod) para payloads de handler y servicio; evita diferencias entre frontend y backend y documenta el contrato.

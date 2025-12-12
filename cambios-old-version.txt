@@ -1,0 +1,24 @@
+Contexto general
+- old-version/try-on.js es una ruta Next.js monolitica (ESM) con bodyParser aumentado y respuesta Express; el nuevo backend esta en aws/src/tryon-service.js + aws/lambda/handler.js con CommonJS y contrato {statusCode, body} para Lambda.
+- old-version/package.json traia dependencias web (next/react/multer/openai); aws/package.json solo incluye @google/generative-ai y sharp.
+
+Cambios clave en old-version/try-on.js (no presentes en el esquema AWS actual)
+- Paso de preanalisis con OpenAI Vision (OPENAI_MODEL, OPENAI_API_KEY) para decidir que imagen de producto usar y extraer tipo de prenda, mangas, cuello, fit, colores, posicion de graficos y como le queda al modelo. Esto genera analysisResult.useImageIndex y generation_instruction detallada.
+- Prompt de generacion buildGenerationPrompt usa el analysisResult para forzar mangas exactas (incluye guardas especificas para sleeveless/short sleeve), neckline, fit y replicar silueta del modelo; la version AWS usa un prompt unico orientado a collar/neckline sin el enriquecimiento dinamico.
+- Seleccion de una sola imagen de producto (la elegida por OpenAI) para la llamada de generacion; el flujo AWS envia todas las imagenes directamente (solo valida pesos).
+- Campos de respuesta estandarizados: model, requestId (propagado o generado), timestamps y fallback que devuelve la imagen original en caso de error. El servicio AWS retorna success/description/generatedImage/size/orientation sin requestId/model.
+- Logs muy verbosos para Vercel con requestId por llamada; AWS solo loguea en modo dev.
+- Validaciones adicionales: limita a 3 productImages, verifica data URL en entrada y devuelve 405/OPTIONS/CORS via ensureCors propio.
+
+Acciones para adaptar esos cambios al esquema AWS (handler + servicio)
+1) Dependencias/vars: agregar openai a aws/package.json e inyectar OPENAI_API_KEY en la Lambda. Mantener GOOGLE_AI_API_KEY para Gemini.
+2) Flujo en aws/src/tryon-service.js: 
+   - Incorporar analyzeProductImages (adaptado a CommonJS y a la firma processTryOn) antes del buildPrompt actual.
+   - Elegir la imagen de producto usando analysisResult.useImageIndex y reconstruir parts con solo user + producto seleccionado.
+   - Reemplazar buildPrompt por buildGenerationPrompt del old-version (o fusionarlo) para que el prompt use los datos dinamicos del analisis.
+3) Respuesta y metadatos: propagar requestId (si viene en payload) y model en el body. Incluir el fallback enriquecido (originalImage/finalImage/fallback flags) manteniendo el formato {statusCode, body}.
+4) Validaciones: portar limites (max 3 imagenes, size logs) y manejo de errores HTTP 400/405/OPTIONS al handler (ya prepara CORS). Sustituir ensureCors por headers del handler.
+5) Modulo/comunes: convertir las import/export ESM del old-version a require/module.exports; eliminar config bodyParser porque Lambda no usa Next.js.
+
+Archivo de referencia para portar codigo
+- old-version/try-on.js (helpers, analyzeProductImages, buildGenerationPrompt, manejo de fallback y requestId).

@@ -5,6 +5,7 @@ exports.handler = async (event = {}) => {
     method: event.httpMethod || event.requestContext?.http?.method || event.method || 'POST',
     headers: event.headers,
     path: event.path || event.requestContext?.http?.path,
+    // MIGRACION old-version: requestId: event.requestId || `req_${Date.now()}_${Math.random().toString(36).slice(2)}`, // opcional para trazabilidad
   };
 
   const baseHeaders = {
@@ -47,6 +48,7 @@ exports.handler = async (event = {}) => {
     };
   }
 
+  // MIGRACION old-version: if (payload && !payload.requestId) payload.requestId = meta.requestId; // propaga requestId al servicio
   const result = await processTryOn(payload, meta);
 
   return {

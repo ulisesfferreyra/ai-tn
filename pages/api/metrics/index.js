@@ -1,4 +1,5 @@
 // pages/api/metrics/index.js
+//
 import { getMetrics, getRecentEvents } from '../../../lib/metrics';
 import { AUTHORIZED_CLIENTS } from '../../../lib/clients';
 

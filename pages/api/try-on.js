@@ -39,9 +39,9 @@ const SIZE_MAP = {
 
 // Modelos a usar:
 // - Análisis: OpenAI GPT-4 Vision para análisis de imágenes
-// - Generación: Nano Banana (gemini-2.5-flash-preview-05-20) para velocidad
+// - Generación: Nano Banana (gemini-2.5-flash-image) para velocidad
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o'; // gpt-4o o gpt-4-turbo
-const GENERATION_MODEL = 'gemini-2.5-flash-preview-05-20'; // Nano Banana
+const GENERATION_MODEL = 'gemini-2.5-flash-image'; // Nano Banana
 
 // ───────────────────────────────────────────────────────────────────────────────
 // NUEVO: Mapeo de contexturas a talle "natural" esperado para ajuste de fit
@@ -1147,7 +1147,7 @@ export default async function handler(req, res) {
     // Inicializar Gemini AI para generación
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
     
-    // Inicializar modelo de generación: Nano Banana (gemini-2.5-flash-preview-05-20)
+    // Inicializar modelo de generación: Nano Banana (gemini-2.5-flash-image)
     const generationModel = genAI.getGenerativeModel({ 
       model: GENERATION_MODEL,
       generationConfig: {
@@ -1293,7 +1293,7 @@ export default async function handler(req, res) {
       generatedImage: `data:image/jpeg;base64,${imageBase64}`,
       size: selectedSize,
       orientation: selectedOrientation,
-      model: GENERATION_MODEL || 'gemini-2.5-flash-preview-05-20', // Fallback por si acaso
+      model: GENERATION_MODEL || 'gemini-2.5-flash-image', // Fallback por si acaso
       requestId: requestId || `req_${Date.now()}_fallback`, // Fallback por si acaso
       timestamp: new Date().toISOString(),
       // NUEVO: Incluir info de ajuste de fit
@@ -1312,7 +1312,7 @@ export default async function handler(req, res) {
     }
     if (!responseData.model) {
       warn('⚠️ model no está definido, usando fallback');
-      responseData.model = GENERATION_MODEL || 'gemini-2.5-flash-preview-05-20';
+      responseData.model = GENERATION_MODEL || 'gemini-2.5-flash-image';
     }
     
     log('📤 Enviando respuesta al frontend:');

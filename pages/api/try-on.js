@@ -620,164 +620,148 @@ CRITICAL RULES:
 // PASO 2: Prompt para generación con Nano Banana usando datos del análisis
 // ───────────────────────────────────────────────────────────────────────────────
 function buildGenerationPrompt({ analysisData, size }) {
-  const userImage = analysisData.user_image || {};
-  const garmentImage = analysisData.garment_image || { orientation: 'front' };
-
-  const garmentType = analysisData.garment_type || {
-    category: 'garment',
-    sleeves: 'unknown',
+  // Extraer datos del análisis - TODO ES DINÁMICO
+  const userImage = analysisData.user_image || { description: 'Person facing camera' };
+  const garmentImage = analysisData.garment_image || { description: 'Garment view', orientation: 'front', reason: 'Selected garment' };
+  
+  // Nuevo: tipo de prenda detectado dinámicamente
+  const garmentType = analysisData.garment_type || { 
+    category: 'garment', 
+    sleeves: 'unknown', 
     neckline: 'unknown',
-    material_appearance: 'unknown',
+    material_appearance: 'unknown'
   };
-
-  const fitStyle = analysisData.fit_style || {
-    body_fit: 'regular',
-    garment_length: 'regular',
-  };
-
+  
+  const fitStyle = analysisData.fit_style || { body_fit: 'regular', garment_length: 'regular' };
   const colors = analysisData.colors || { primary: 'unknown', secondary: 'none' };
-
-  const designDetails = analysisData.design_details || {
-    description: 'No design details detected',
-    placement: 'unknown',
-    notable_features: 'none',
+  const designDetails = analysisData.design_details || { description: 'Garment design', placement: 'unknown', notable_features: 'Standard features' };
+  
+  // NUEVO: Cómo le queda la prenda al modelo
+  const howItFits = analysisData.how_it_fits_on_model || {
+    sleeve_end_point: 'unknown',
+    sleeve_tightness: 'unknown',
+    torso_fit: 'unknown',
+    garment_end_point: 'unknown',
+    shoulder_fit: 'unknown',
+    arm_opening_width: 'unknown',
+    overall_silhouette: 'unknown'
   };
-
-  const howItFits = analysisData.how_it_fits_on_model || {};
-  const sizeGuide = analysisData.size_adjustment_guide || {};
-
-  const generationInstruction =
-    analysisData.generation_instruction ||
-    'Replace the user clothing with the garment exactly as specified.';
-
+  
+  // CRÍTICO: La instrucción completa generada por OpenAI con TODOS los detalles
+  const generationInstruction = analysisData.generation_instruction || analysisData.instruction || 'Replace the garment on the user with the product garment';
   const confidence = analysisData.confidence || 'medium';
 
-  // ─────────────────────────────────────────────────────────────
-  // SIZE LOCK (CRÍTICO)
-  // ─────────────────────────────────────────────────────────────
-  const normalizedSize = (size || 'M').toUpperCase();
-  const sizeAdjustment =
-    sizeGuide[`${normalizedSize}_adjustment`] ||
-    sizeGuide.M_adjustment ||
-    'Standard fit adjustments';
-
-  const baseFit = sizeGuide.base_fit || 'Reference fit as shown on model';
-
-  // ─────────────────────────────────────────────────────────────
-  // SLEEVES LOCK
-  // ─────────────────────────────────────────────────────────────
+  // Construir descripción de mangas - CRÍTICO para sleeveless
+  let sleeveDescription = '';
   const sleeves = garmentType.sleeves?.toLowerCase() || '';
-  let sleeveInstruction = '';
-
-  if (sleeves.includes('none') || sleeves.includes('sleeveless')) {
-    sleeveInstruction =
-      'THIS IS A SLEEVELESS GARMENT. DO NOT ADD SLEEVES OF ANY KIND.';
+  if (sleeves.includes('none') || sleeves.includes('sleeveless') || sleeves.includes('tank')) {
+    sleeveDescription = '⚠️ THIS IS A SLEEVELESS GARMENT - NO SLEEVES AT ALL. Do NOT add any sleeves.';
+  } else if (sleeves.includes('cap')) {
+    sleeveDescription = 'Cap sleeves (very short, just covering shoulders)';
   } else if (sleeves.includes('short')) {
-    sleeveInstruction =
-      'This garment has SHORT SLEEVES. Do NOT generate long or sleeveless arms.';
+    sleeveDescription = 'Short sleeves (typical t-shirt length)';
+  } else if (sleeves.includes('3/4') || sleeves.includes('three')) {
+    sleeveDescription = '3/4 length sleeves (below elbow)';
   } else if (sleeves.includes('long')) {
-    sleeveInstruction =
-      'This garment has LONG SLEEVES. Sleeves must reach the wrist.';
+    sleeveDescription = 'Long sleeves (full length to wrist)';
   } else {
-    sleeveInstruction = `Sleeves: ${garmentType.sleeves}`;
+    sleeveDescription = `Sleeves: ${garmentType.sleeves}`;
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // ORIENTATION LOCK
-  // ─────────────────────────────────────────────────────────────
-  const orientationInstruction =
-    garmentImage.orientation === 'back'
-      ? 'The garment MUST be applied using the BACK view.'
-      : 'The garment MUST be applied using the FRONT view.';
+  // Construir descripción de cómo debe quedar (basado en el modelo)
+  let fitOnBodyDescription = '';
+  if (howItFits.overall_silhouette !== 'unknown') {
+    fitOnBodyDescription = `
+═══════════════════════════════════════════════════════════════
+HOW THE GARMENT SHOULD FIT (COPY EXACTLY FROM MODEL):
+═══════════════════════════════════════════════════════════════
 
-  // ─────────────────────────────────────────────────────────────
-  // MODEL FIT LOCK
-  // ─────────────────────────────────────────────────────────────
-  const modelFitBlock = howItFits.overall_silhouette
-    ? `
-HOW IT MUST FIT (COPY MODEL EXACTLY):
-- Sleeve end: ${howItFits.sleeve_end_point}
-- Sleeve tightness: ${howItFits.sleeve_tightness}
-- Torso fit: ${howItFits.torso_fit}
-- Garment length: ${howItFits.garment_end_point}
-- Shoulder fit: ${howItFits.shoulder_fit}
-- Fabric excess: ${howItFits.fabric_excess}
-- Overall silhouette: ${howItFits.overall_silhouette}
+The garment MUST look EXACTLY like it does on the model in the product photos:
 
-If the garment is loose/boxy on the model, it MUST be loose/boxy on the user.
-`
-    : '';
+- SLEEVES END AT: ${howItFits.sleeve_end_point}
+- SLEEVE TIGHTNESS: ${howItFits.sleeve_tightness}
+- TORSO FIT: ${howItFits.torso_fit}
+- GARMENT ENDS AT: ${howItFits.garment_end_point}
+- SHOULDER FIT: ${howItFits.shoulder_fit}
+- ARM OPENING WIDTH: ${howItFits.arm_opening_width}
+- OVERALL SILHOUETTE: ${howItFits.overall_silhouette}
 
-  // ─────────────────────────────────────────────────────────────
-  // FINAL PROMPT
-  // ─────────────────────────────────────────────────────────────
-  return `
-VIRTUAL TRY-ON TASK (STRICT MODE)
+⚠️ CRITICAL: Replicate the EXACT same fit as shown on the model. If the garment is loose/boxy on the model, it must be loose/boxy on the user. If sleeves end at mid-bicep on the model, they must end at mid-bicep on the user.
+`;
+  }
 
-You will receive:
-1) USER IMAGE
-2) GARMENT IMAGE
+  return `VIRTUAL TRY-ON TASK - DYNAMIC GARMENT DETECTION
 
-══════════════════════════════════════
-GARMENT (LOCKED — DO NOT DEVIATE)
-══════════════════════════════════════
-TYPE: ${garmentType.category}
-${sleeveInstruction}
+You will receive TWO images:
+1. USER IMAGE: The person to dress
+2. GARMENT IMAGE: The exact garment to put on the user
+
+═══════════════════════════════════════════════════════════════
+DYNAMICALLY DETECTED GARMENT SPECIFICATIONS (DO NOT DEVIATE):
+═══════════════════════════════════════════════════════════════
+
+GARMENT TYPE: ${garmentType.category}
+${sleeveDescription}
 NECKLINE: ${garmentType.neckline}
 MATERIAL: ${garmentType.material_appearance}
+
+FIT:
+- Body fit: ${fitStyle.body_fit}
+- Length: ${fitStyle.garment_length}
 
 COLORS:
 - Primary: ${colors.primary}
 - Secondary: ${colors.secondary}
 
-DESIGN:
+DESIGN ELEMENTS:
 ${designDetails.description}
-Placement: ${designDetails.placement}
-Features: ${designDetails.notable_features}
+- Placement: ${designDetails.placement}
+- Notable features: ${designDetails.notable_features}
+${fitOnBodyDescription}
+═══════════════════════════════════════════════════════════════
+MAIN INSTRUCTION (FOLLOW EXACTLY):
+═══════════════════════════════════════════════════════════════
 
-══════════════════════════════════════
-ORIENTATION (MANDATORY)
-══════════════════════════════════════
-${orientationInstruction}
-
-══════════════════════════════════════
-SIZE ENFORCEMENT (CRITICAL)
-══════════════════════════════════════
-User selected size: ${normalizedSize}
-
-Base fit reference:
-${baseFit}
-
-Apply these exact adjustments for size ${normalizedSize}:
-${sizeAdjustment}
-
-The size MUST be visually obvious.
-XS ≠ S ≠ M ≠ L ≠ XL ≠ XXL.
-Ignoring size is a critical failure.
-
-${modelFitBlock}
-
-══════════════════════════════════════
-MAIN INSTRUCTION (FOLLOW EXACTLY)
-══════════════════════════════════════
 ${generationInstruction}
 
-══════════════════════════════════════
-MANDATORY RULES
-══════════════════════════════════════
-✓ Preserve user's face, body, pose, background and lighting
-✓ Replace ONLY the clothing
-✓ Do NOT hallucinate features
-✓ Do NOT change garment type, sleeves or neckline
-✓ Photorealistic fabric drape and shadows
+═══════════════════════════════════════════════════════════════
+MANDATORY RULES:
+═══════════════════════════════════════════════════════════════
 
-OUTPUT:
-Generate ONE photorealistic image of the user wearing the garment in size ${normalizedSize}.
+✓ USER PRESERVATION (DO NOT CHANGE):
+  - User's face, expression, features → KEEP IDENTICAL
+  - User's pose and body position → KEEP IDENTICAL
+  - User's arms and hands → KEEP IDENTICAL
+  - Background and lighting → KEEP IDENTICAL
 
-Confidence level of analysis: ${confidence}
-`.trim();
+✓ GARMENT APPLICATION (CRITICAL):
+  - Apply the EXACT garment type detected: ${garmentType.category}
+  - ${sleeveDescription}
+  - Use the EXACT neckline: ${garmentType.neckline}
+  - Apply the EXACT fit: ${fitStyle.body_fit}, ${fitStyle.garment_length}
+  - Use the EXACT colors: ${colors.primary}${colors.secondary !== 'none' ? ', ' + colors.secondary : ''}
+  - MATCH the fit from the model: ${howItFits.overall_silhouette}
+
+✓ DESIGN REPLICATION (100% ACCURATE):
+  - Copy ALL graphics, logos, text EXACTLY as shown
+  - Place designs in the EXACT position: ${designDetails.placement}
+  - Preserve ALL notable features: ${designDetails.notable_features}
+
+✓ REALISM:
+  - Photorealistic quality
+  - Natural fabric drape and shadows
+  - Seamless body-garment integration
+
+⚠️ CRITICAL WARNINGS:
+- If garment is SLEEVELESS → generate with NO SLEEVES (not short sleeves, NO sleeves)
+- If garment has SHORT SLEEVES → generate with SHORT SLEEVES (not long, not sleeveless)
+- The garment type MUST match exactly what was detected
+- DO NOT add or remove features that weren't in the original garment
+
+OUTPUT: Generate ONE photorealistic image of the user wearing the exact garment as specified above.
+
+Analysis Confidence: ${confidence}`.trim();
 }
-
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Handler
@@ -1264,4 +1248,3 @@ export default async function handler(req, res) {
     }
   }
 }
-

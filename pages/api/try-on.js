@@ -1,5 +1,6 @@
-// /pages/api/tryon.js
+// /pages/api/try-on.js
 // VERSIÓN MEJORADA: Análisis con OpenAI Vision + Generación con Gemini Nano Banana
+// + Tracking de métricas + Ajuste visual de talle según contextura
 // Basado en: 
 // - https://platform.openai.com/docs/guides/images-vision
 // - https://ai.google.dev/gemini-api/docs/image-generation
@@ -7,6 +8,7 @@
 import sharp from 'sharp';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
+import { trackTryOnEvent, getClientDomain } from '../../lib/metrics';
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Config API (20 MB para múltiples imágenes)
@@ -37,9 +39,128 @@ const SIZE_MAP = {
 
 // Modelos a usar:
 // - Análisis: OpenAI GPT-4 Vision para análisis de imágenes
-// - Generación: Nano Banana (gemini-2.5-flash-image) para velocidad
+// - Generación: Nano Banana (gemini-2.5-flash-preview-05-20) para velocidad
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o'; // gpt-4o o gpt-4-turbo
-const GENERATION_MODEL = 'gemini-2.5-flash-image'; // Nano Banana
+const GENERATION_MODEL = 'gemini-2.5-flash-preview-05-20'; // Nano Banana
+
+// ───────────────────────────────────────────────────────────────────────────────
+// NUEVO: Mapeo de contexturas a talle "natural" esperado para ajuste de fit
+// ───────────────────────────────────────────────────────────────────────────────
+const BUILD_TO_SIZE_MAP = {
+  'very slim': 'XS',
+  'slim': 'S',
+  'average': 'M',
+  'athletic': 'M',
+  'broad': 'L',
+  'plus-size': 'XL',
+  'very broad': 'XXL',
+};
+
+// ───────────────────────────────────────────────────────────────────────────────
+// NUEVO: Función para calcular el ajuste visual basado en contextura vs talle
+// ───────────────────────────────────────────────────────────────────────────────
+function calculateFitAdjustment(userBuild, selectedSize) {
+  const sizeOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+  const normalizedBuild = (userBuild || 'average').toLowerCase();
+  
+  // Determinar el talle "natural" para esta contextura
+  let naturalSize = 'M';
+  for (const [build, size] of Object.entries(BUILD_TO_SIZE_MAP)) {
+    if (normalizedBuild.includes(build)) {
+      naturalSize = size;
+      break;
+    }
+  }
+  
+  const naturalIndex = sizeOrder.indexOf(naturalSize);
+  const selectedIndex = sizeOrder.indexOf((selectedSize || 'M').toUpperCase());
+  const difference = selectedIndex - naturalIndex;
+  
+  // difference < 0 = talle chico para su contextura (prenda ajustada)
+  // difference > 0 = talle grande para su contextura (prenda suelta)
+  
+  if (difference <= -2) {
+    return {
+      type: 'very_tight',
+      intensity: 2,
+      naturalSize,
+      selectedSize,
+      description: `Talle ${selectedSize} MUY CHICO para contextura ${userBuild}`,
+      visualInstruction: `CRITICAL FIT ADJUSTMENT: User has ${userBuild} build but chose size ${selectedSize} (their natural size would be ${naturalSize}). 
+The garment MUST appear VERY TIGHT and SMALL on them:
+- Fabric visibly stretched and pulling at seams
+- Garment clinging tightly to body, showing body contours
+- Sleeves too short, riding up on arms
+- Torso section too short, may ride up
+- Visible strain lines in fabric
+- Limited movement appearance
+- The garment should look like it's 2 sizes too small`
+    };
+  } else if (difference === -1) {
+    return {
+      type: 'tight',
+      intensity: 1,
+      naturalSize,
+      selectedSize,
+      description: `Talle ${selectedSize} algo chico para contextura ${userBuild}`,
+      visualInstruction: `FIT ADJUSTMENT: User has ${userBuild} build but chose size ${selectedSize} (slightly small for them).
+The garment should appear FITTED/SNUG:
+- Fabric slightly stretched, form-fitting
+- Garment close to body but not extremely tight
+- Sleeves may be slightly short
+- Shows body shape more than intended
+- Minimal fabric excess
+- The garment should look like it's 1 size too small`
+    };
+  } else if (difference === 0) {
+    return {
+      type: 'normal',
+      intensity: 0,
+      naturalSize,
+      selectedSize,
+      description: `Talle ${selectedSize} adecuado para contextura ${userBuild}`,
+      visualInstruction: `STANDARD FIT: User's build (${userBuild}) matches the selected size (${selectedSize}).
+Generate the garment with natural, intended fit:
+- Fabric drapes naturally as designed
+- Proper sleeve length
+- Comfortable fit, not too tight or loose
+- As shown on the product model`
+    };
+  } else if (difference === 1) {
+    return {
+      type: 'loose',
+      intensity: 1,
+      naturalSize,
+      selectedSize,
+      description: `Talle ${selectedSize} algo grande para contextura ${userBuild}`,
+      visualInstruction: `FIT ADJUSTMENT: User has ${userBuild} build but chose size ${selectedSize} (slightly large for them).
+The garment should appear RELAXED/LOOSE:
+- Extra fabric visible, slight bagginess
+- Sleeves may be slightly long
+- Garment doesn't cling to body
+- More casual, relaxed appearance
+- Some fabric bunching possible
+- The garment should look like it's 1 size too big`
+    };
+  } else {
+    return {
+      type: 'very_loose',
+      intensity: 2,
+      naturalSize,
+      selectedSize,
+      description: `Talle ${selectedSize} MUY GRANDE para contextura ${userBuild}`,
+      visualInstruction: `CRITICAL FIT ADJUSTMENT: User has ${userBuild} build but chose size ${selectedSize} (their natural size would be ${naturalSize}).
+The garment MUST appear VERY LOOSE and OVERSIZED:
+- Significant excess fabric everywhere
+- Sleeves too long, past wrists
+- Shoulder seams dropping below shoulders
+- Garment length longer than intended
+- Fabric draping and bunching visibly
+- Very baggy, swimming in the garment
+- The garment should look like it's 2+ sizes too big`
+    };
+  }
+}
 
 function parseDataUrl(dataUrl) {
   if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) return null;
@@ -125,10 +246,10 @@ SELECTED SIZE & ADJUSTMENT (CRITICAL)
 ══════════════════════════════════════════════
 USER SELECTED SIZE: ${size}
 
-Base fit on model: ${size_adjustment_guide.base_fit}
+Base fit on model: {{size_adjustment_guide.base_fit}}
 
 SIZE ADJUSTMENT FOR ${size}:
-${size_adjustment_guide[size + '_adjustment']}
+{{size_adjustment_guide.${size}_adjustment}}
 
 ⚠️ CRITICAL SIZE APPLICATION RULES:
 
@@ -598,7 +719,7 @@ CRITICAL RULES:
       warn('Error parseando respuesta de análisis, usando primera imagen:', parseErr);
       analysisData = { 
         useImageIndex: 0, 
-        user_image: { index: 1, description: 'Unknown' },
+        user_image: { index: 1, description: 'Unknown', body_analysis: { build: 'average', height: 'average' } },
         garment_image: { index: 2, description: 'Unknown', orientation: 'front', reason: 'Error parsing analysis' },
         fit_style: { sleeve_length: 'regular', body_fit: 'regular', garment_length: 'regular' },
         design_details: { description: 'Unknown', notable_features: 'Unknown' },
@@ -618,8 +739,9 @@ CRITICAL RULES:
 
 // ───────────────────────────────────────────────────────────────────────────────
 // PASO 2: Prompt para generación con Nano Banana usando datos del análisis
+// + NUEVO: Incluye ajuste de fit basado en contextura vs talle
 // ───────────────────────────────────────────────────────────────────────────────
-function buildGenerationPrompt({ analysisData, size }) {
+function buildGenerationPrompt({ analysisData, size, fitAdjustment }) {
   // Extraer datos del análisis - TODO ES DINÁMICO
   const userImage = analysisData.user_image || { description: 'Person facing camera' };
   const garmentImage = analysisData.garment_image || { description: 'Garment view', orientation: 'front', reason: 'Selected garment' };
@@ -646,6 +768,9 @@ function buildGenerationPrompt({ analysisData, size }) {
     arm_opening_width: 'unknown',
     overall_silhouette: 'unknown'
   };
+  
+  // Análisis del cuerpo del usuario
+  const bodyAnalysis = userImage.body_analysis || { build: 'average', height: 'average' };
   
   // CRÍTICO: La instrucción completa generada por OpenAI con TODOS los detalles
   const generationInstruction = analysisData.generation_instruction || analysisData.instruction || 'Replace the garment on the user with the product garment';
@@ -690,12 +815,38 @@ The garment MUST look EXACTLY like it does on the model in the product photos:
 `;
   }
 
+  // NUEVO: Instrucción de ajuste de fit basado en contextura vs talle
+  let fitAdjustmentSection = '';
+  if (fitAdjustment && fitAdjustment.type !== 'normal') {
+    fitAdjustmentSection = `
+═══════════════════════════════════════════════════════════════
+⚠️ CRITICAL: FIT ADJUSTMENT BASED ON USER'S BODY VS SELECTED SIZE
+═══════════════════════════════════════════════════════════════
+
+${fitAdjustment.visualInstruction}
+
+This adjustment is MANDATORY. The garment must visually reflect how size ${size} would actually look on someone with a ${bodyAnalysis.build} build.
+`;
+  }
+
   return `VIRTUAL TRY-ON TASK - DYNAMIC GARMENT DETECTION
 
 You will receive TWO images:
 1. USER IMAGE: The person to dress
 2. GARMENT IMAGE: The exact garment to put on the user
 
+═══════════════════════════════════════════════════════════════
+USER BODY ANALYSIS
+═══════════════════════════════════════════════════════════════
+Height: ${bodyAnalysis.height || 'average'}
+Build: ${bodyAnalysis.build || 'average'}
+Shoulder width: ${bodyAnalysis.shoulder_width || 'average'}
+Torso length: ${bodyAnalysis.torso_length || 'average'}
+
+═══════════════════════════════════════════════════════════════
+SELECTED SIZE: ${size}
+═══════════════════════════════════════════════════════════════
+${fitAdjustmentSection}
 ═══════════════════════════════════════════════════════════════
 DYNAMICALLY DETECTED GARMENT SPECIFICATIONS (DO NOT DEVIATE):
 ═══════════════════════════════════════════════════════════════
@@ -757,6 +908,7 @@ MANDATORY RULES:
 - If garment has SHORT SLEEVES → generate with SHORT SLEEVES (not long, not sleeveless)
 - The garment type MUST match exactly what was detected
 - DO NOT add or remove features that weren't in the original garment
+${fitAdjustment && fitAdjustment.type !== 'normal' ? `- APPLY FIT ADJUSTMENT: ${fitAdjustment.description}` : ''}
 
 OUTPUT: Generate ONE photorealistic image of the user wearing the exact garment as specified above.
 
@@ -805,17 +957,23 @@ export default async function handler(req, res) {
   
   console.log('[VERCEL-LOG] GOOGLE_AI_API_KEY encontrada');
 
+  // NUEVO: Variables para tracking de métricas
+  const clientDomain = getClientDomain(req);
+  const startTime = Date.now();
+
   // Usar requestId del frontend si viene, sino generar uno nuevo
   const requestId = req.body?.requestId || `req_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   
   console.log('[VERCEL-LOG] ===========================================');
   console.log(`[VERCEL-LOG] REQUEST INICIADO [${requestId}]`);
   console.log(`[VERCEL-LOG] Request ID Source: ${req.body?.requestId ? 'frontend' : 'backend-generated'}`);
+  console.log(`[VERCEL-LOG] Client Domain: ${clientDomain}`);
   console.log('[VERCEL-LOG] ===========================================');
   
   console.log('═══════════════════════════════════════════════════════════════');
   console.log(`🚀 REQUEST INICIADO [${requestId}]`);
   console.log(`📋 Request ID Source: ${req.body?.requestId ? 'frontend' : 'backend-generated'}`);
+  console.log(`📊 Client Domain: ${clientDomain}`);
   console.log('═══════════════════════════════════════════════════════════════');
   
   log('═══════════════════════════════════════════════════════════════');
@@ -827,7 +985,8 @@ export default async function handler(req, res) {
     analysisModel: OPENAI_MODEL, 
     generationModel: GENERATION_MODEL,
     requestId,
-    requestIdSource: req.body?.requestId ? 'frontend' : 'backend-generated'
+    requestIdSource: req.body?.requestId ? 'frontend' : 'backend-generated',
+    clientDomain
   });
   
   if (IS_DEV) {
@@ -864,6 +1023,7 @@ export default async function handler(req, res) {
     log(`   📊 Total imágenes producto a procesar: ${productImagesArray.length}`);
 
     const selectedOrientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
+    const selectedSize = (size || 'M').toUpperCase();
 
     // Parse/normalize user image
     const parsedUser = parseDataUrl(userImage);
@@ -895,6 +1055,22 @@ export default async function handler(req, res) {
     let { useImageIndex } = analysisResult;
     log(`✅ Análisis completado: Usar imagen del producto en índice ${useImageIndex}`);
 
+    // NUEVO: Extraer contextura del usuario del análisis
+    const userBuild = analysisResult.user_image?.body_analysis?.build || 'average';
+    log(`👤 Contextura del usuario detectada: ${userBuild}`);
+    log(`📏 Talle seleccionado: ${selectedSize}`);
+
+    // NUEVO: Calcular ajuste de fit
+    const fitAdjustment = calculateFitAdjustment(userBuild, selectedSize);
+    log('═══════════════════════════════════════════════════════════════');
+    log('📐 AJUSTE DE FIT CALCULADO:');
+    log(`   Tipo: ${fitAdjustment.type}`);
+    log(`   Intensidad: ${fitAdjustment.intensity}`);
+    log(`   Talle natural para ${userBuild}: ${fitAdjustment.naturalSize}`);
+    log(`   Talle elegido: ${selectedSize}`);
+    log(`   Descripción: ${fitAdjustment.description}`);
+    log('═══════════════════════════════════════════════════════════════');
+
     // Seleccionar solo la imagen del producto que OpenAI determinó
     if (useImageIndex < 0 || useImageIndex >= productImagesArray.length) {
       warn(`⚠️ Índice inválido ${useImageIndex}, usando primera imagen del producto`);
@@ -917,10 +1093,11 @@ export default async function handler(req, res) {
     log('═══════════════════════════════════════════════════════════════');
     log(`📋 Request ID: ${requestId}`);
 
-    // Construir prompt usando datos del análisis de OpenAI
+    // Construir prompt usando datos del análisis de OpenAI + ajuste de fit
     const generationPrompt = buildGenerationPrompt({ 
       analysisData: analysisResult,
-      size 
+      size: selectedSize,
+      fitAdjustment
     });
 
     // Construir partes para generación - SOLO 2 IMÁGENES
@@ -970,7 +1147,7 @@ export default async function handler(req, res) {
     // Inicializar Gemini AI para generación
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
     
-    // Inicializar modelo de generación: Nano Banana (gemini-2.5-flash-image)
+    // Inicializar modelo de generación: Nano Banana (gemini-2.5-flash-preview-05-20)
     const generationModel = genAI.getGenerativeModel({ 
       model: GENERATION_MODEL,
       generationConfig: {
@@ -1086,22 +1263,46 @@ export default async function handler(req, res) {
       throw new Error('No se pudo extraer la imagen generada (imageData vacío o inválido). La IA puede haber retornado texto en lugar de una imagen.');
     }
 
+    const totalDuration = Date.now() - startTime;
+
     log('✅ Imagen generada exitosamente');
     log(`📋 Request ID: ${requestId}`);
     log('═══════════════════════════════════════════════════════════════');
-    log(`✅ REQUEST COMPLETADO [${requestId}]`);
+    log(`✅ REQUEST COMPLETADO [${requestId}] en ${totalDuration}ms`);
     log('═══════════════════════════════════════════════════════════════');
+
+    // NUEVO: Tracking de métricas - éxito
+    try {
+      await trackTryOnEvent({
+        clientDomain,
+        requestId,
+        success: true,
+        duration: totalDuration,
+        size: selectedSize,
+        model: GENERATION_MODEL,
+      });
+      log(`📊 Métrica guardada para ${clientDomain}`);
+    } catch (trackErr) {
+      warn('Error guardando métrica:', trackErr.message);
+    }
     
     // Asegurar que requestId y model siempre estén presentes
     const responseData = {
       success: true,
       description: 'Imagen generada exitosamente con IA',
       generatedImage: `data:image/jpeg;base64,${imageBase64}`,
-      size: size || 'M',
+      size: selectedSize,
       orientation: selectedOrientation,
-      model: GENERATION_MODEL || 'gemini-2.5-flash-image', // Fallback por si acaso
+      model: GENERATION_MODEL || 'gemini-2.5-flash-preview-05-20', // Fallback por si acaso
       requestId: requestId || `req_${Date.now()}_fallback`, // Fallback por si acaso
       timestamp: new Date().toISOString(),
+      // NUEVO: Incluir info de ajuste de fit
+      fitAdjustment: {
+        type: fitAdjustment.type,
+        description: fitAdjustment.description,
+        userBuild,
+        naturalSize: fitAdjustment.naturalSize,
+      },
     };
     
     // Validar que los campos críticos estén presentes
@@ -1111,7 +1312,7 @@ export default async function handler(req, res) {
     }
     if (!responseData.model) {
       warn('⚠️ model no está definido, usando fallback');
-      responseData.model = GENERATION_MODEL || 'gemini-2.5-flash-image';
+      responseData.model = GENERATION_MODEL || 'gemini-2.5-flash-preview-05-20';
     }
     
     log('📤 Enviando respuesta al frontend:');
@@ -1121,6 +1322,7 @@ export default async function handler(req, res) {
     log(`   - generatedImage length: ${responseData.generatedImage.length} caracteres`);
     log(`   - size: ${responseData.size}`);
     log(`   - orientation: ${responseData.orientation}`);
+    log(`   - fitAdjustment: ${responseData.fitAdjustment.type}`);
     log(`   - timestamp: ${responseData.timestamp}`);
     
     // Verificar que los campos críticos existen antes de enviar
@@ -1147,6 +1349,8 @@ export default async function handler(req, res) {
     return res.json(responseData);
 
   } catch (error) {
+    const totalDuration = Date.now() - startTime;
+    
     // Diagnóstico extendido
     const body = req.body || {};
     const hasUser = !!body.userImage;
@@ -1177,6 +1381,22 @@ export default async function handler(req, res) {
     err('   - size:', body.size || 'M (default)');
     err('   - userOrientation:', body.userOrientation || 'null');
     err('═══════════════════════════════════════════════════════════════');
+
+    // NUEVO: Tracking de métricas - error
+    try {
+      await trackTryOnEvent({
+        clientDomain,
+        requestId,
+        success: false,
+        duration: totalDuration,
+        size: body.size || 'M',
+        model: 'error',
+        errorType,
+      });
+      log(`📊 Métrica de error guardada para ${clientDomain}`);
+    } catch (trackErr) {
+      warn('Error guardando métrica de error:', trackErr.message);
+    }
 
     // Fallback enriquecido
     try {
@@ -1248,3 +1468,4 @@ export default async function handler(req, res) {
     }
   }
 }
+

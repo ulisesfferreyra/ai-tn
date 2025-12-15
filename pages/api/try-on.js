@@ -123,12 +123,12 @@ This is the BASE FIT (reference size on the model).
 ══════════════════════════════════════════════
 SELECTED SIZE & ADJUSTMENT (CRITICAL)
 ══════════════════════════════════════════════
-USER SELECTED SIZE: {{size}}
+USER SELECTED SIZE: ${size}
 
-Base fit on model: {{size_adjustment_guide.base_fit}}
+Base fit on model: ${size_adjustment_guide.base_fit}
 
-SIZE ADJUSTMENT FOR {{size}}:
-{{size_adjustment_guide[size + '_adjustment']}}
+SIZE ADJUSTMENT FOR ${size}:
+${size_adjustment_guide[size + '_adjustment']}
 
 ⚠️ CRITICAL SIZE APPLICATION RULES:
 

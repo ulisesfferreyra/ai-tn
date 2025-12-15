@@ -1,4 +1,4 @@
-/ pages/api/auth/login.js
+// pages/api/auth/login.js
 import { validateClient } from '../../../lib/clients';
 import { serialize } from 'cookie';
 

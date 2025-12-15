@@ -69,128 +69,121 @@ function buildPrompt({ productImagesCount, userOrientation, size }) {
   const orientation = ALLOWED_ORIENTATIONS.has(userOrientation) ? userOrientation : 'front';
   const sizeInstruction = SIZE_MAP[size?.toUpperCase?.()] || SIZE_MAP.M;
 
-  return `You are an expert fashion AI with advanced image analysis capabilities. Your task is to dress the user with the exact garment from product images.
+  return `VIRTUAL TRY-ON TASK – DYNAMIC GARMENT APPLICATION
 
-TASK: Dress the user (first image) with the exact garment from the product images (remaining images).
+You will receive TWO images:
+1.⁠ ⁠USER IMAGE – the person to dress
+2.⁠ ⁠GARMENT IMAGE – the exact garment to apply
 
-⚠️ CRITICAL: SYSTEMATIC IMAGE ANALYSIS - FOLLOW EXACTLY
+══════════════════════════════════════════════
+USER BODY ANALYSIS
+══════════════════════════════════════════════
+Height: {{user_image.body_analysis.height}}
+Build: {{user_image.body_analysis.build}}
+Shoulder width: {{user_image.body_analysis.shoulder_width}}
+Torso length: {{user_image.body_analysis.torso_length}}
+Arm length: {{user_image.body_analysis.arm_length}}
 
-IMAGE ORDER (FIXED):
-- Image 1: USER (person to dress) - ALWAYS
-- Image 2: First product image (could be front OR back - you must determine)
-- Image 3, 4, etc.: Additional product images (may include models wearing the garment)
+══════════════════════════════════════════════
+GARMENT SPECIFICATIONS (DO NOT DEVIATE)
+══════════════════════════════════════════════
+GARMENT TYPE: {{garment_type.category}}
+SLEEVES: {{garment_type.sleeves}}
+NECKLINE: {{garment_type.neckline}}
+MATERIAL: {{garment_type.material_appearance}}
 
-═══════════════════════════════════════════════════════════════
-PHASE 1: SYSTEMATIC IMAGE ANALYSIS
-═══════════════════════════════════════════════════════════════
+FIT:
+•⁠  ⁠Body fit: {{fit_style.body_fit}}
+•⁠  ⁠Length: {{fit_style.garment_length}}
 
-STEP 1: Identify and Catalog All Images
-- Image 1 = USER (person to dress) - confirm this is a person photo
-- Image 2 = First product image - analyze in detail
-- Images 3+ = Additional product images - analyze each one
+COLORS:
+•⁠  ⁠Primary: {{colors.primary}}
+•⁠  ⁠Secondary: {{colors.secondary}}
 
-STEP 2: DETAILED ANALYSIS OF EACH PRODUCT IMAGE
+DESIGN ELEMENTS:
+{{design_details.description}}
+Placement: {{design_details.placement}}
+Notable features: {{design_details.notable_features}}
 
-For EACH product image (2, 3, 4, etc.), perform a systematic visual analysis:
+══════════════════════════════════════════════
+BASE FIT REFERENCE (HOW IT FITS ON MODEL)
+══════════════════════════════════════════════
+Model body type: {{how_it_fits_on_model.model_body_type}}
+•⁠  ⁠Sleeves end at: {{how_it_fits_on_model.sleeve_end_point}}
+•⁠  ⁠Sleeve tightness: {{how_it_fits_on_model.sleeve_tightness}}
+•⁠  ⁠Torso fit: {{how_it_fits_on_model.torso_fit}}
+•⁠  ⁠Garment ends at: {{how_it_fits_on_model.garment_end_point}}
+•⁠  ⁠Shoulder fit: {{how_it_fits_on_model.shoulder_fit}}
+•⁠  ⁠Arm opening width: {{how_it_fits_on_model.arm_opening_width}}
+•⁠  ⁠Fabric excess: {{how_it_fits_on_model.fabric_excess}}
+•⁠  ⁠Overall silhouette: {{how_it_fits_on_model.overall_silhouette}}
 
-A) Image Type Detection:
-   - Does it show a PERSON/MODEL wearing the garment? (Yes/No)
-   - Does it show the garment alone (flat or on mannequin)? (Yes/No)
-   - What is the viewing angle? (front view / back view / side view / other)
+This is the BASE FIT (reference size on the model).
 
-B) Visual Element Extraction (if garment is visible):
-   - Design/Graphics: Describe ALL visible graphics, logos, text, patterns
-   - Colors: Note primary and secondary colors
-   - Structural elements: Collar (yes/no, type), neckline (shape, depth), buttons/zippers (location), seams
-   - Text/Logos: Any text visible? Where? What does it say?
-   - Patterns: Stripes, prints, graphics - describe in detail
-   - Tags/Labels: Visible tags? Where? (typically on back)
+══════════════════════════════════════════════
+SELECTED SIZE & ADJUSTMENT (CRITICAL)
+══════════════════════════════════════════════
+USER SELECTED SIZE: {{size}}
 
-C) Orientation Indicators:
-   - FRONT indicators: Collar visible, neckline opening, buttons/zipper in front, main graphics/logos, text facing viewer
-   - BACK indicators: Tags visible, simpler design, no collar opening, different graphics than front
+Base fit on model: {{size_adjustment_guide.base_fit}}
 
-STEP 3: COMPARISON LOGIC - DETERMINE IF IMAGE 2 IS FRONT OR BACK
+SIZE ADJUSTMENT FOR {{size}}:
+{{size_adjustment_guide[size + '_adjustment']}}
 
-CRITICAL: Follow this EXACT sequence for comparison:
+⚠️ CRITICAL SIZE APPLICATION RULES:
 
-A) Search for MODEL photos in images 3, 4, etc.:
-   - Systematically check each image (3, 4, etc.)
-   - Look for images showing a PERSON/MODEL wearing the garment facing the camera (front view)
-   - If found, extract and document:
-     * The design/graphics visible on the FRONT of the garment (chest/torso area)
-     * Colors, patterns, logos, text - describe in detail
-     * Any unique identifying features
+1.⁠ ⁠COMPARE BODIES:
+   - User body: {{user_image.body_analysis.build}}, {{user_image.body_analysis.height}}
+   - Model body: {{how_it_fits_on_model.model_body_type}}
 
-B) Extract design from Image 2:
-   - Analyze Image 2 in detail
-   - Document ALL visible design elements:
-     * Graphics, logos, text, patterns
-     * Colors and their arrangement
-     * Any unique identifying features
-   - Note structural elements (collar, buttons, etc.)
+2.⁠ ⁠APPLY SIZE ADJUSTMENT:
+   - Start with the base fit described above
+   - Apply the {{size}} adjustment instructions
+   - Example: If user selected XL and base is M:
+     * Make sleeves longer by 2-3cm
+     * Make torso looser (more fabric drape)
+     * Extend garment length proportionally
+     * Add more fabric excess
 
-C) SYSTEMATIC COMPARISON:
-   - Compare Image 2 design with model photo design (if model photo found in images 3+)
-   - Compare element by element:
-     * Graphics/Logos: Same or different?
-     * Text: Same or different?
-     * Patterns: Same or different?
-     * Colors: Same or different?
-     * Overall design composition: Same or different?
-   
-   - DECISION RULE:
-     * IF model photo found AND designs are DIFFERENT:
-       → Image 2 = BACK of the garment
-       → The model photo shows the FRONT design
-     * IF model photo found AND designs are THE SAME:
-       → Image 2 = FRONT of the garment
-     * IF no model photo found:
-       → Use orientation indicators (collars, tags, etc.) to determine if Image 2 is front or back
+3.⁠ ⁠BODY PROPORTION ADJUSTMENTS:
+   - If user is TALLER than model: extend garment length proportionally
+   - If user is SHORTER than model: reduce garment length proportionally
+   - If user is BROADER than model: add width proportionally
+   - If user is SLIMMER than model: reduce width proportionally
 
-STEP 4: Determine Correct FRONT Design to Use
-- If Image 2 = BACK: Extract FRONT design from model photo (images 3+) or other product images
-- If Image 2 = FRONT: Use Image 2's design
-- Document the exact FRONT design elements you will use:
-  * Graphics/Logos description
-  * Colors and arrangement
-  * Text (if any)
-  * Patterns
-  * Structural elements
+4.⁠ ⁠SIZE-SPECIFIC RULES:
+   - XS/S: Tighter fit, shorter sleeves, less fabric drape, garment closer to body
+   - M: Standard fit (close to model reference)
+   - L/XL/XXL: Looser fit, longer sleeves, more fabric drape, more space between garment and body
 
-═══════════════════════════════════════════════════════════════
-PHASE 2: DRESSING THE USER
-═══════════════════════════════════════════════════════════════
+⚠️ THE SIZE PARAMETER {{size}} IS MANDATORY AND NON-NEGOTIABLE
+The garment MUST look different for XS vs XL. Ignoring this parameter is a critical failure.
 
-DRESSING INSTRUCTIONS:
-- Replace ONLY the user's clothing with the product garment
-- Use the CORRECT FRONT side design (as determined in Phase 1)
-- Apply the exact design elements documented in Step 4
-- Preserve: user's face, pose, expression, background, lighting
-- Match colors, patterns, logos, graphics, and text with 100% accuracy from the FRONT side
-- Ensure natural neckline alignment and proper fit
-- Size: ${sizeInstruction}
-- Make it photorealistic with natural fabric drape and realistic shadows
+══════════════════════════════════════════════
+MAIN INSTRUCTION (FOLLOW EXACTLY)
+══════════════════════════════════════════════
+{{generation_instruction}}
 
-═══════════════════════════════════════════════════════════════
-PHASE 3: VERIFICATION BEFORE GENERATING
-═══════════════════════════════════════════════════════════════
+══════════════════════════════════════════════
+MANDATORY RULES
+══════════════════════════════════════════════
+✓ Preserve user's face, pose, body, background and lighting  
+✓ Replace ONLY the clothing  
+✓ Apply the SELECTED SIZE {{size}} adjustments  
+✓ DO NOT add or remove sleeves  
+✓ DO NOT change garment type  
+✓ Copy graphics, logos, text with 100% accuracy  
+✓ Photorealistic fabric drape and shadows  
+✓ Adjust fit based on user's body vs model's body  
 
-Before generating, verify ALL of the following:
+⚠️ CRITICAL:
+•⁠  ⁠Sleeveless means NO sleeves
+•⁠  ⁠Short sleeves means short sleeves ONLY
+•⁠  ⁠Never hallucinate features
+•⁠  ⁠Size {{size}} MUST be visibly different from other sizes
+•⁠  ⁠If user selected XL, garment MUST be noticeably looser than if they selected S
 
-✓ Performed systematic analysis of all product images
-✓ Identified which images show models wearing the garment
-✓ Extracted and documented design from Image 2
-✓ Extracted and documented design from model photo (if exists)
-✓ Compared designs systematically (element by element)
-✓ Correctly determined if Image 2 is FRONT or BACK based on design comparison
-✓ Documented the exact FRONT design to use
-✓ Using the FRONT design (not the back) to dress the user
-✓ All design elements (graphics, colors, text, patterns) match the FRONT side
-✓ User's pose and orientation match the garment application
-
-OUTPUT:
-Generate a single high-quality image showing the user wearing the exact product garment (FRONT side) with perfect visual fidelity, matching all documented design elements.`.trim();
+OUTPUT: Generate ONE photorealistic image of the user wearing the exact garment in size {{size}}, adjusted for their body type ({{user_image.body_analysis.build}}, {{user_image.body_analysis.height}}).`.trim();
 }
 
 function safePickGeneratedImage(resp) {
@@ -303,136 +296,143 @@ async function analyzeProductImages(userImageBase64, productImagesArray) {
   const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
   const analysisPrompt = `You will receive multiple images: some showing a USER/PERSON and others showing a GARMENT (clothing product).
-
 Your task: Create a JSON output that will be used to generate a virtual try-on image. You must DETECT and DESCRIBE everything dynamically - never assume anything about the garment type.
 
 CRITICAL - FOLLOW THIS EXACT SEQUENCE:
 
-STEP 1: IDENTIFY THE USER IMAGE
-- Find the image showing the person who needs garment replacement
-- Determine their pose orientation: are they facing camera (front) or facing away (back)?
+STEP 1: ANALYZE THE USER IMAGE IN DETAIL
+•⁠  ⁠Find the image showing the person who needs garment replacement
+•⁠  ⁠Determine their pose orientation: are they facing camera (front) or facing away (back)?
+•⁠  ⁠*BODY ANALYSIS (CRITICAL FOR FIT):*
+  * Height estimation: very short / short / average / tall / very tall
+  * Build: slim / athletic / average / broad / plus-size
+  * Shoulder width: narrow / average / broad
+  * Torso length: short / average / long
+  * Arm length: short / average / long
+•⁠  ⁠These measurements are CRITICAL for adjusting garment fit to the user's body
 
 STEP 2: IDENTIFY ALL GARMENT IMAGES
-- Find all images showing the garment
-- For each garment image, determine: FRONT or BACK view?
+•⁠  ⁠Find all images showing the garment
+•⁠  ⁠For each garment image, determine: FRONT or BACK view?
 
 STEP 3: MATCH GARMENT ORIENTATION TO USER ORIENTATION
-- User facing camera (front) → select FRONT view of garment
-- User facing away (back) → select BACK view of garment
+•⁠  ⁠User facing camera (front) → select FRONT view of garment
+•⁠  ⁠User facing away (back) → select BACK view of garment
 
 STEP 4: DYNAMICALLY DETECT GARMENT TYPE AND ALL CHARACTERISTICS
-This is CRITICAL - you must detect and describe EXACTLY what you see, not assume anything:
+Detect exactly what you see:
+A) GARMENT TYPE:
+   t-shirt, tank top, sleeveless, hoodie, sweatshirt, polo, button-up, jacket, etc.
+B) SLEEVES:
+   none/sleeveless, cap sleeves, short sleeves, 3/4 sleeves, long sleeves
+C) NECKLINE:
+   crew neck, v-neck, scoop, hoodie, collar, etc.
+D) FIT & LENGTH:
+   skin-tight, fitted, regular, relaxed, loose, oversized, boxy
+   cropped, regular, long
+E) MATERIAL APPEARANCE:
+   cotton, jersey, knit, denim, etc. or unknown
+F) COLORS:
+   primary and secondary
 
-A) GARMENT TYPE (detect exactly what it is):
-   - t-shirt, tank top/sleeveless, muscle tee, crop top, long sleeve shirt, hoodie, sweatshirt, jacket, vest, polo, button-up shirt, etc.
+STEP 5: DESIGN DETAILS
+•⁠  ⁠Graphics, logos, text, prints
+•⁠  ⁠Exact placement
+•⁠  ⁠Unique features (zippers, buttons, pockets, distressing)
 
-B) SLEEVE CHARACTERISTICS (detect exactly):
-   - none/sleeveless (NO sleeves at all - like tank tops, muscle tees)
-   - cap sleeves (very short, just covering shoulders)
-   - short sleeves (typical t-shirt length)
-   - 3/4 sleeves (below elbow)
-   - long sleeves (full length to wrist)
-   - rolled up sleeves
-   - etc.
+STEP 6: HOW IT FITS ON THE MODEL (CRITICAL - BASE SIZE REFERENCE)
+If any image shows a model wearing it, describe EXACTLY:
+•⁠  ⁠*Model's apparent body type*: slim / average / athletic / broad
+•⁠  ⁠Sleeve end point: mid-bicep / elbow / forearm / wrist / past wrist
+•⁠  ⁠Sleeve tightness: tight / fitted / loose / very loose
+•⁠  ⁠Torso fit: skin-tight / fitted / regular / loose / very loose / boxy
+•⁠  ⁠Garment end point: waist / hips / mid-thigh / knee
+•⁠  ⁠Shoulder fit: aligned / slightly dropped / dropped / oversized
+•⁠  ⁠Arm opening width (for sleeveless): narrow / medium / wide / very wide
+•⁠  ⁠Overall silhouette: description
+•⁠  ⁠*How much fabric excess*: none (tight) / minimal / moderate / significant / extreme
 
-C) NECKLINE TYPE (detect exactly):
-   - crew neck (round)
-   - v-neck
-   - scoop neck
-   - high neck/mock neck
-   - hoodie with hood
-   - collar (polo or button-up)
-   - etc.
+STEP 7: SELECT ONE ADDITIONAL CONTEXT IMAGE
+•⁠  ⁠From remaining garment images, select ONE that shows:
+  1. PRIORITY: A human model wearing the garment (for fit reference)
+  2. If no model: clearest view of garment details
+•⁠  ⁠This image provides additional context for fit and details
 
-D) FIT AND LENGTH (detect exactly):
-   - Body fit: skin-tight, fitted, regular, relaxed, loose, oversized, boxy
-   - Length: cropped (above waist), regular, long/tunic, oversized
-
-E) MATERIAL APPEARANCE (if visible):
-   - Cotton, jersey, denim, leather, knit, etc.
-
-F) COLOR(S):
-   - Primary color, secondary colors, patterns
-
-STEP 5: CAPTURE ALL DESIGN DETAILS
-- Graphics, logos, text, prints, patterns
-- Exact placement (center chest, left chest, full front, back, etc.)
-- Any unique features (pockets, zippers, buttons, distressing, etc.)
-
-STEP 6: ANALYZE HOW THE GARMENT FITS ON THE MODEL (CRITICAL FOR REPLICATION)
-If there's a model wearing the garment in any of the product images, analyze EXACTLY how it fits:
-
-A) SLEEVE LENGTH ON BODY (if applicable):
-   - Where do sleeves end relative to arm? (shoulder, mid-bicep, elbow, mid-forearm, wrist)
-   - Are they tight or loose on the arm?
-
-B) TORSO FIT:
-   - How does it fit on chest/torso? (skin-tight, fitted, slightly loose, very loose, boxy)
-   - Does it show body shape or hide it?
-
-C) GARMENT LENGTH ON BODY:
-   - Where does the garment end? (above waist, at waist, below waist, at hips, mid-thigh)
-   - Is it tucked in or hanging loose?
-
-D) SHOULDER FIT:
-   - Do shoulders align with model's shoulders or are they dropped/oversized?
-   - For sleeveless: how wide are the arm openings?
-
-E) OVERALL SILHOUETTE:
-   - Describe the overall shape/silhouette when worn
-
-Return ONLY valid JSON (no additional text, no markdown, no code blocks):
-
+RETURN ONLY VALID JSON (no markdown):
 {
   "user_image": {
     "index": <number>,
-    "description": "<detailed description of user's pose>"
+    "description": "<user pose description>",
+    "body_analysis": {
+      "height": "<very short/short/average/tall/very tall>",
+      "build": "<slim/athletic/average/broad/plus-size>",
+      "shoulder_width": "<narrow/average/broad>",
+      "torso_length": "<short/average/long>",
+      "arm_length": "<short/average/long>"
+    }
   },
   "garment_image": {
     "index": <number>,
-    "description": "<description of the garment view>",
+    "description": "<garment description>",
     "orientation": "<front/back>",
-    "reason": "<why this image matches user's orientation>"
+    "reason": "<why this image was chosen>"
   },
   "garment_type": {
-    "category": "<exact garment type: tank top, t-shirt, hoodie, etc.>",
-    "sleeves": "<none/sleeveless, cap, short, 3/4, long, etc.>",
-    "neckline": "<crew neck, v-neck, hoodie, collar, etc.>",
-    "material_appearance": "<cotton, jersey, knit, etc. or unknown>"
+    "category": "<exact garment type>",
+    "sleeves": "<none/sleeveless/short/long/etc>",
+    "neckline": "<crew/v-neck/collar/etc>",
+    "material_appearance": "<cotton/knit/etc or unknown>"
   },
   "fit_style": {
-    "body_fit": "<skin-tight/fitted/regular/relaxed/loose/oversized/boxy>",
-    "garment_length": "<cropped/regular/long/oversized>"
+    "body_fit": "<skin-tight/fitted/regular/loose/oversized>",
+    "garment_length": "<cropped/regular/long>"
   },
   "how_it_fits_on_model": {
-    "sleeve_end_point": "<shoulder/mid-bicep/elbow/mid-forearm/wrist/not applicable for sleeveless>",
-    "sleeve_tightness": "<tight on arm/fitted/loose/very loose/not applicable>",
-    "torso_fit": "<skin-tight/fitted/slightly loose/loose/very loose/boxy>",
-    "garment_end_point": "<above waist/at waist/below waist/at hips/mid-thigh>",
-    "shoulder_fit": "<aligned with shoulders/slightly dropped/dropped/oversized>",
-    "arm_opening_width": "<narrow/medium/wide - for sleeveless garments>",
-    "overall_silhouette": "<describe the shape when worn: fitted and body-hugging / relaxed and comfortable / oversized and boxy / etc.>"
+    "model_body_type": "<slim/average/athletic/broad>",
+    "sleeve_end_point": "<mid-bicep/elbow/wrist/etc>",
+    "sleeve_tightness": "<tight/fitted/loose>",
+    "torso_fit": "<fitted/loose/boxy>",
+    "garment_end_point": "<waist/hips/mid-thigh>",
+    "shoulder_fit": "<aligned/dropped/oversized>",
+    "arm_opening_width": "<narrow/medium/wide>",
+    "fabric_excess": "<none/minimal/moderate/significant/extreme>",
+    "overall_silhouette": "<description>"
   },
   "colors": {
-    "primary": "<main color>",
-    "secondary": "<other colors if any, or none>"
+    "primary": "<color>",
+    "secondary": "<color or none>"
   },
   "design_details": {
-    "description": "<ALL visible design elements: graphics, logos, text, patterns>",
-    "placement": "<where designs are located: center chest, left chest, full front, etc.>",
-    "notable_features": "<unique features: pockets, zippers, distressing, etc.>"
+    "description": "<all visible graphics/text/patterns>",
+    "placement": "<exact placement>",
+    "notable_features": "<unique features>"
   },
-  "generation_instruction": "<DETAILED instruction that includes ALL characteristics AND how it should fit. Example: 'Dress the user with a BLACK SLEEVELESS TANK TOP with NO SLEEVES, crew neckline, WIDE arm openings, relaxed boxy fit that ends at the hips. The garment should drape loosely on the torso, not fitted. Small red star logo on left chest. CRITICAL: No sleeves, wide arm openings, loose fit ending at hips - exactly as shown on the model.'>",
-  "reasoning": "<your analysis process>",
+  "additional_context_image": {
+    "index": <number>,
+    "reason": "<why selected: human model present / clear details / etc>",
+    "usage": "Reference only for fit accuracy and garment details. Study human model (if present) to understand realistic drape, proportions, and fabric behavior. DO NOT use for orientation decisions."
+  },
+  "size_adjustment_guide": {
+    "base_fit": "<how it fits on the model in the images>",
+    "XS_adjustment": "<how fit should change for XS: tighter, shorter sleeves, etc>",
+    "S_adjustment": "<how fit should change for S>",
+    "M_adjustment": "<how fit should change for M (reference)>",
+    "L_adjustment": "<how fit should change for L>",
+    "XL_adjustment": "<how fit should change for XL: looser, longer, more drape>",
+    "XXL_adjustment": "<how fit should change for XXL>"
+  },
+  "generation_instruction": "<FULL instruction describing: 1) User's body type, 2) EXACT garment type and features, 3) EXACT fit as seen on model, 4) How to adjust for different sizes>",
+  "reasoning": "<analysis summary including user body analysis and fit observations>",
   "confidence": "<high/medium/low>"
 }
 
 CRITICAL RULES:
-- DETECT everything dynamically - never assume the garment type
-- If it's SLEEVELESS, explicitly state "NO SLEEVES" in generation_instruction
-- If it has SHORT SLEEVES, explicitly state "SHORT SLEEVES" in generation_instruction
-- The generation_instruction must be detailed enough that someone could recreate the exact garment
-- Output must be valid JSON only`;
+•⁠  ⁠NEVER assume garment type
+•⁠  ⁠If sleeveless, explicitly say: NO SLEEVES
+•⁠  ⁠ALWAYS analyze user's body proportions
+•⁠  ⁠ALWAYS describe model's body type for fit comparison
+•⁠  ⁠size_adjustment_guide must explain how each size differs from the base (model) fit
+•⁠  ⁠generation_instruction must include user body analysis + size adjustment logic`;
 
   try {
     // Construir mensajes para OpenAI

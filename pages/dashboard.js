@@ -12,38 +12,35 @@ export default function Dashboard() {
   const [client, setClient] = useState(null);
   const [metrics, setMetrics] = useState(null);
   const [recentEvents, setRecentEvents] = useState([]);
+  const [demoMessage, setDemoMessage] = useState(null);
 
-  // Verificar si ya está logueado
+  // Verificar si hay sesión al cargar
   useEffect(() => {
-    const token = localStorage.getItem('dashboard_token');
-    if (token) {
-      fetchMetrics(token);
-    } else {
-      setLoading(false);
-    }
+    checkSession();
   }, []);
 
-  const fetchMetrics = async (token) => {
+  const checkSession = async () => {
     try {
       const res = await fetch('/api/metrics', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
       
       if (res.ok) {
         const data = await res.json();
+        setIsLoggedIn(true);
         setClient(data.client);
         setMetrics(data.metrics);
         setRecentEvents(data.recentEvents || []);
-        setIsLoggedIn(true);
+        setDemoMessage(data.demoMessage);
       } else {
-        localStorage.removeItem('dashboard_token');
+        setIsLoggedIn(false);
       }
     } catch (err) {
-      console.error('Error fetching metrics:', err);
+      console.log('No session found');
+      setIsLoggedIn(false);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleLogin = async (e) => {
@@ -56,57 +53,78 @@ export default function Dashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
+        credentials: 'include',
       });
 
       const data = await res.json();
 
       if (res.ok && data.success) {
-        localStorage.setItem('dashboard_token', data.token);
+        setIsLoggedIn(true);
         setClient(data.client);
-        await fetchMetrics(data.token);
+        // Cargar métricas después del login exitoso
+        await fetchMetrics();
       } else {
-        setError(data.error || 'Error de autenticación');
+        setError(data.error || 'Invalid credentials');
       }
     } catch (err) {
-      setError('Error de conexión');
+      setError('Connection error. Please try again.');
+    } finally {
+      setLoginLoading(false);
     }
-    setLoginLoading(false);
+  };
+
+  const fetchMetrics = async () => {
+    try {
+      const res = await fetch('/api/metrics', {
+        credentials: 'include',
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setMetrics(data.metrics);
+        setRecentEvents(data.recentEvents || []);
+        setDemoMessage(data.demoMessage);
+      }
+    } catch (err) {
+      console.error('Error fetching metrics:', err);
+    }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('dashboard_token');
+    document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     setIsLoggedIn(false);
     setClient(null);
     setMetrics(null);
+    setUsername('');
+    setPassword('');
   };
 
-  const refreshMetrics = () => {
-    const token = localStorage.getItem('dashboard_token');
-    if (token) {
-      setLoading(true);
-      fetchMetrics(token);
-    }
-  };
-
+  // Loading inicial
   if (loading) {
     return (
-      <div style={styles.loadingContainer}>
-        <div style={styles.spinner}></div>
-        <p>Cargando...</p>
+      <div style={styles.container}>
+        <div style={styles.loader}>
+          <div style={styles.spinner}></div>
+          <p>Cargando...</p>
+        </div>
       </div>
     );
   }
 
+  // Pantalla de Login
   if (!isLoggedIn) {
     return (
       <>
         <Head>
-          <title>Dashboard - AI Try-On</title>
+          <title>Login - AI Try-On Dashboard</title>
         </Head>
-        <div style={styles.loginContainer}>
-          <div style={styles.loginBox}>
-            <h1 style={styles.loginTitle}>🎨 AI Try-On</h1>
-            <p style={styles.loginSubtitle}>Dashboard de Métricas</p>
+        <div style={styles.container}>
+          <div style={styles.loginCard}>
+            <div style={styles.loginHeader}>
+              <span style={{ fontSize: '48px' }}>🎨</span>
+              <h1 style={styles.title}>AI Try-On</h1>
+              <p style={styles.subtitle}>Dashboard de Métricas</p>
+            </div>
             
             <form onSubmit={handleLogin} style={styles.form}>
               <input
@@ -125,7 +143,9 @@ export default function Dashboard() {
                 style={styles.input}
                 required
               />
+              
               {error && <p style={styles.error}>{error}</p>}
+              
               <button 
                 type="submit" 
                 style={styles.button}
@@ -140,6 +160,7 @@ export default function Dashboard() {
     );
   }
 
+  // Dashboard
   return (
     <>
       <Head>
@@ -149,453 +170,445 @@ export default function Dashboard() {
         {/* Header */}
         <header style={styles.header}>
           <div>
-            <h1 style={styles.headerTitle}>🎨 AI Try-On Dashboard</h1>
-            <p style={styles.headerSubtitle}>{client?.name} ({client?.domain})</p>
+            <h1 style={styles.dashboardTitle}>📊 {client?.name || 'Dashboard'}</h1>
+            <p style={styles.domain}>{client?.domain}</p>
           </div>
-          <div style={styles.headerActions}>
-            <button onClick={refreshMetrics} style={styles.refreshBtn}>🔄 Actualizar</button>
-            <button onClick={handleLogout} style={styles.logoutBtn}>Cerrar sesión</button>
-          </div>
+          <button onClick={handleLogout} style={styles.logoutBtn}>
+            Cerrar Sesión
+          </button>
         </header>
 
-        {/* Stats Cards */}
-        <div style={styles.statsGrid}>
-          <StatCard
-            icon="🎯"
-            title="Total Generaciones"
-            value={metrics?.totalGenerations || 0}
-            subtitle={`${metrics?.totalGenerations || 0} en total`}
-            color="#3b82f6"
-          />
-          <StatCard
-            icon="✅"
-            title="Tasa de Éxito"
-            value={`${metrics?.successRate || 0}%`}
-            subtitle={`${metrics?.errors || 0} errores totales`}
-            color="#22c55e"
-          />
-          <StatCard
-            icon="⚡"
-            title="Tiempo Promedio"
-            value={`${((metrics?.avgDuration || 0) / 1000).toFixed(1)}s`}
-            subtitle={`${metrics?.avgDuration || 0} milisegundos`}
-            color="#f59e0b"
-          />
-          <StatCard
-            icon="⭐"
-            title="Feedback Score"
-            value={metrics?.feedbackScore > 0 ? `+${metrics.feedbackScore}` : metrics?.feedbackScore || 0}
-            subtitle={`${(metrics?.likes || 0) + (metrics?.dislikes || 0)} valoraciones totales`}
-            color="#8b5cf6"
-          />
-        </div>
+        {/* Demo Message */}
+        {demoMessage && (
+          <div style={styles.demoAlert}>
+            {demoMessage}
+          </div>
+        )}
 
-        {/* Charts Row */}
-        <div style={styles.chartsRow}>
-          {/* Size Distribution */}
-          <div style={styles.chartCard}>
-            <h3 style={styles.chartTitle}>📊 Distribución de Talles</h3>
-            <p style={styles.chartSubtitle}>Demanda por talle - útil para decisiones de inventario</p>
-            <div style={styles.sizeChart}>
-              {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((size) => {
-                const sizeData = metrics?.sizeDistribution?.find(s => s.size === size);
-                const count = sizeData?.count || 0;
-                const maxCount = Math.max(...(metrics?.sizeDistribution?.map(s => s.count) || [1]), 1);
-                const height = (count / maxCount) * 150;
-                const colors = {
-                  'XS': '#ec4899',
-                  'S': '#8b5cf6',
-                  'M': '#3b82f6',
-                  'L': '#22c55e',
-                  'XL': '#f59e0b',
-                  'XXL': '#ef4444',
-                };
-                return (
-                  <div key={size} style={styles.sizeBar}>
-                    <div 
-                      style={{
-                        ...styles.bar,
-                        height: `${Math.max(height, 4)}px`,
-                        backgroundColor: colors[size],
-                      }}
-                    />
+        {/* Stats Cards */}
+        {metrics && (
+          <>
+            <div style={styles.statsGrid}>
+              <StatCard
+                title="Try-Ons Totales"
+                value={metrics.totals?.tryons || 0}
+                icon="👕"
+                color="#4F46E5"
+              />
+              <StatCard
+                title="Exitosos"
+                value={metrics.totals?.successes || 0}
+                subtitle={`${metrics.rates?.successRate || 0}% tasa de éxito`}
+                icon="✅"
+                color="#10B981"
+              />
+              <StatCard
+                title="Conversiones"
+                value={metrics.totals?.conversions || 0}
+                subtitle={`${metrics.rates?.conversionRate || 0}% de try-ons`}
+                icon="🛒"
+                color="#F59E0B"
+              />
+              <StatCard
+                title="Satisfacción"
+                value={`${metrics.rates?.satisfactionRate || 0}%`}
+                subtitle={`${metrics.totals?.likes || 0} 👍 / ${metrics.totals?.dislikes || 0} 👎`}
+                icon="😊"
+                color="#EC4899"
+              />
+            </div>
+
+            {/* Today Stats */}
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>📅 Hoy</h2>
+              <div style={styles.todayGrid}>
+                <div style={styles.todayCard}>
+                  <span style={styles.todayValue}>{metrics.today?.tryons || 0}</span>
+                  <span style={styles.todayLabel}>Try-Ons</span>
+                </div>
+                <div style={styles.todayCard}>
+                  <span style={styles.todayValue}>{metrics.today?.conversions || 0}</span>
+                  <span style={styles.todayLabel}>Conversiones</span>
+                </div>
+                <div style={styles.todayCard}>
+                  <span style={styles.todayValue}>{metrics.today?.likes || 0}</span>
+                  <span style={styles.todayLabel}>Likes</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Size Distribution */}
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>📏 Distribución por Talle</h2>
+              <div style={styles.sizeGrid}>
+                {Object.entries(metrics.sizeDistribution || {}).map(([size, count]) => (
+                  <div key={size} style={styles.sizeCard}>
                     <span style={styles.sizeLabel}>{size}</span>
                     <span style={styles.sizeCount}>{count}</span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Feedback */}
-          <div style={styles.chartCard}>
-            <h3 style={styles.chartTitle}>💬 Feedback de Usuarios</h3>
-            <p style={styles.chartSubtitle}>Satisfacción con las imágenes generadas</p>
-            <div style={styles.feedbackContainer}>
-              <div style={styles.feedbackItem}>
-                <span style={styles.feedbackEmoji}>👍</span>
-                <span style={styles.feedbackCount}>{metrics?.likes || 0}</span>
-                <span style={styles.feedbackLabel}>Me gusta</span>
-              </div>
-              <div style={styles.feedbackItem}>
-                <span style={styles.feedbackEmoji}>👎</span>
-                <span style={styles.feedbackCountRed}>{metrics?.dislikes || 0}</span>
-                <span style={styles.feedbackLabel}>No me gusta</span>
+                ))}
               </div>
             </div>
-            <div style={styles.satisfactionBar}>
-              <span>Ratio de satisfacción</span>
-              <span style={styles.satisfactionValue}>{metrics?.satisfactionRate || 0}%</span>
-            </div>
-          </div>
-        </div>
 
-        {/* Recent Events */}
-        <div style={styles.eventsCard}>
-          <h3 style={styles.chartTitle}>📋 Eventos Recientes</h3>
-          <div style={styles.eventsTable}>
-            {recentEvents.length === 0 ? (
-              <p style={styles.noEvents}>No hay eventos registrados aún</p>
-            ) : (
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Hora</th>
-                    <th>Estado</th>
-                    <th>Talle</th>
-                    <th>Duración</th>
-                    <th>Modelo</th>
-                  </tr>
-                </thead>
-                <tbody>
+            {/* Last 7 Days */}
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>📈 Últimos 7 Días</h2>
+              <div style={styles.chartContainer}>
+                {metrics.last7Days?.map((day, idx) => (
+                  <div key={idx} style={styles.chartBar}>
+                    <div style={styles.barContainer}>
+                      <div 
+                        style={{
+                          ...styles.bar,
+                          height: `${Math.min((day.tryons / Math.max(...metrics.last7Days.map(d => d.tryons || 1))) * 100, 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <span style={styles.barLabel}>
+                      {new Date(day.date).toLocaleDateString('es', { weekday: 'short' })}
+                    </span>
+                    <span style={styles.barValue}>{day.tryons}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Recent Events */}
+            {recentEvents.length > 0 && (
+              <div style={styles.section}>
+                <h2 style={styles.sectionTitle}>🕐 Eventos Recientes</h2>
+                <div style={styles.eventsList}>
                   {recentEvents.slice(0, 10).map((event, idx) => (
-                    <tr key={idx}>
-                      <td>{new Date(event.timestamp).toLocaleTimeString()}</td>
-                      <td>
-                        <span style={{
-                          ...styles.badge,
-                          backgroundColor: event.success ? '#22c55e' : '#ef4444',
-                        }}>
-                          {event.success ? '✓ OK' : '✗ Error'}
-                        </span>
-                      </td>
-                      <td>{event.size || '-'}</td>
-                      <td>{event.duration ? `${(event.duration / 1000).toFixed(1)}s` : '-'}</td>
-                      <td style={styles.modelCell}>{event.model || '-'}</td>
-                    </tr>
+                    <div key={idx} style={styles.eventItem}>
+                      <span style={styles.eventIcon}>
+                        {event.success ? '✅' : '❌'}
+                      </span>
+                      <span style={styles.eventDetails}>
+                        Talle {event.selectedSize || 'N/A'} - {event.processingTimeMs ? `${(event.processingTimeMs/1000).toFixed(1)}s` : 'N/A'}
+                      </span>
+                      <span style={styles.eventTime}>
+                        {new Date(event.timestamp).toLocaleTimeString('es')}
+                      </span>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </div>
             )}
-          </div>
-        </div>
+          </>
+        )}
+
+        {/* Refresh Button */}
+        <button onClick={fetchMetrics} style={styles.refreshBtn}>
+          🔄 Actualizar Datos
+        </button>
       </div>
     </>
   );
 }
 
-// Componente StatCard
-function StatCard({ icon, title, value, subtitle, color }) {
+// Componente para las tarjetas de estadísticas
+function StatCard({ title, value, subtitle, icon, color }) {
   return (
-    <div style={styles.statCard}>
-      <div style={styles.statHeader}>
-        <span style={styles.statIcon}>{icon}</span>
-        <span style={styles.statTitle}>{title}</span>
+    <div style={{ ...styles.statCard, borderLeftColor: color }}>
+      <div style={styles.statIcon}>{icon}</div>
+      <div style={styles.statContent}>
+        <p style={styles.statTitle}>{title}</p>
+        <p style={{ ...styles.statValue, color }}>{value}</p>
+        {subtitle && <p style={styles.statSubtitle}>{subtitle}</p>}
       </div>
-      <div style={{ ...styles.statValue, color }}>{value}</div>
-      <div style={styles.statSubtitle}>{subtitle}</div>
     </div>
   );
 }
 
 // Estilos
 const styles = {
-  loadingContainer: {
+  container: {
+    minHeight: '100vh',
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100vh',
-    backgroundColor: '#0a0a0a',
+    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+    padding: '20px',
+  },
+  loader: {
+    textAlign: 'center',
     color: '#fff',
   },
   spinner: {
     width: '40px',
     height: '40px',
-    border: '3px solid #333',
-    borderTop: '3px solid #3b82f6',
+    border: '4px solid rgba(255,255,255,0.3)',
+    borderTop: '4px solid #fff',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite',
+    margin: '0 auto 20px',
   },
-  loginContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100vh',
-    backgroundColor: '#0a0a0a',
-  },
-  loginBox: {
-    backgroundColor: '#111',
-    padding: '40px',
+  loginCard: {
+    background: '#1e1e2f',
     borderRadius: '16px',
-    border: '1px solid #222',
+    padding: '40px',
     width: '100%',
     maxWidth: '400px',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
   },
-  loginTitle: {
+  loginHeader: {
+    textAlign: 'center',
+    marginBottom: '30px',
+  },
+  title: {
     color: '#fff',
     fontSize: '28px',
-    marginBottom: '8px',
-    textAlign: 'center',
+    margin: '10px 0 5px',
   },
-  loginSubtitle: {
-    color: '#666',
+  subtitle: {
+    color: '#888',
     fontSize: '14px',
-    marginBottom: '30px',
-    textAlign: 'center',
   },
   form: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '16px',
+    gap: '15px',
   },
   input: {
-    padding: '14px 16px',
-    borderRadius: '8px',
-    border: '1px solid #333',
-    backgroundColor: '#1a1a1a',
+    padding: '15px 20px',
+    borderRadius: '10px',
+    border: 'none',
+    background: '#2a2a3e',
     color: '#fff',
     fontSize: '16px',
+    outline: 'none',
   },
   button: {
-    padding: '14px',
-    borderRadius: '8px',
+    padding: '15px',
+    borderRadius: '10px',
     border: 'none',
-    backgroundColor: '#3b82f6',
+    background: '#4F46E5',
     color: '#fff',
     fontSize: '16px',
     fontWeight: 'bold',
     cursor: 'pointer',
-    marginTop: '8px',
+    marginTop: '10px',
   },
   error: {
     color: '#ef4444',
-    fontSize: '14px',
     textAlign: 'center',
-    margin: 0,
+    margin: '0',
+    fontSize: '14px',
   },
   dashboard: {
     minHeight: '100vh',
-    backgroundColor: '#0a0a0a',
+    background: '#0f0f1a',
+    padding: '20px',
     color: '#fff',
-    padding: '24px',
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '32px',
-    flexWrap: 'wrap',
-    gap: '16px',
+    marginBottom: '30px',
+    padding: '20px',
+    background: '#1e1e2f',
+    borderRadius: '12px',
   },
-  headerTitle: {
-    fontSize: '24px',
+  dashboardTitle: {
     margin: 0,
+    fontSize: '24px',
   },
-  headerSubtitle: {
-    color: '#666',
+  domain: {
+    margin: '5px 0 0',
+    color: '#888',
     fontSize: '14px',
-    margin: '4px 0 0 0',
-  },
-  headerActions: {
-    display: 'flex',
-    gap: '12px',
-  },
-  refreshBtn: {
-    padding: '10px 16px',
-    borderRadius: '8px',
-    border: '1px solid #333',
-    backgroundColor: 'transparent',
-    color: '#fff',
-    cursor: 'pointer',
   },
   logoutBtn: {
-    padding: '10px 16px',
+    padding: '10px 20px',
     borderRadius: '8px',
-    border: 'none',
-    backgroundColor: '#333',
+    border: '1px solid #444',
+    background: 'transparent',
     color: '#fff',
     cursor: 'pointer',
+  },
+  demoAlert: {
+    padding: '15px 20px',
+    background: '#fef3c7',
+    color: '#92400e',
+    borderRadius: '8px',
+    marginBottom: '20px',
+    textAlign: 'center',
   },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
     gap: '20px',
-    marginBottom: '24px',
+    marginBottom: '30px',
   },
   statCard: {
-    backgroundColor: '#111',
+    background: '#1e1e2f',
     borderRadius: '12px',
-    padding: '24px',
-    border: '1px solid #222',
-  },
-  statHeader: {
+    padding: '20px',
+    borderLeft: '4px solid',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
-    marginBottom: '16px',
+    gap: '15px',
   },
   statIcon: {
-    fontSize: '20px',
+    fontSize: '32px',
+  },
+  statContent: {
+    flex: 1,
   },
   statTitle: {
+    margin: 0,
     color: '#888',
     fontSize: '14px',
   },
   statValue: {
-    fontSize: '36px',
+    margin: '5px 0',
+    fontSize: '28px',
     fontWeight: 'bold',
-    marginBottom: '8px',
   },
   statSubtitle: {
+    margin: 0,
     color: '#666',
-    fontSize: '13px',
+    fontSize: '12px',
   },
-  chartsRow: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '20px',
-    marginBottom: '24px',
-  },
-  chartCard: {
-    backgroundColor: '#111',
+  section: {
+    background: '#1e1e2f',
     borderRadius: '12px',
-    padding: '24px',
-    border: '1px solid #222',
+    padding: '20px',
+    marginBottom: '20px',
   },
-  chartTitle: {
+  sectionTitle: {
+    margin: '0 0 20px',
     fontSize: '18px',
-    marginBottom: '4px',
+    color: '#fff',
   },
-  chartSubtitle: {
-    color: '#666',
-    fontSize: '13px',
-    marginBottom: '24px',
+  todayGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '15px',
   },
-  sizeChart: {
+  todayCard: {
+    background: '#2a2a3e',
+    borderRadius: '8px',
+    padding: '15px',
+    textAlign: 'center',
+  },
+  todayValue: {
+    display: 'block',
+    fontSize: '24px',
+    fontWeight: 'bold',
+    color: '#4F46E5',
+  },
+  todayLabel: {
+    display: 'block',
+    fontSize: '12px',
+    color: '#888',
+    marginTop: '5px',
+  },
+  sizeGrid: {
     display: 'flex',
-    alignItems: 'flex-end',
-    justifyContent: 'space-around',
-    height: '200px',
-    paddingTop: '20px',
+    gap: '10px',
+    flexWrap: 'wrap',
   },
-  sizeBar: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  bar: {
-    width: '40px',
-    borderRadius: '4px 4px 0 0',
-    transition: 'height 0.3s ease',
+  sizeCard: {
+    background: '#2a2a3e',
+    borderRadius: '8px',
+    padding: '10px 20px',
+    textAlign: 'center',
   },
   sizeLabel: {
-    color: '#888',
-    fontSize: '12px',
+    display: 'block',
+    fontWeight: 'bold',
+    color: '#fff',
   },
   sizeCount: {
-    color: '#fff',
+    display: 'block',
     fontSize: '14px',
-    fontWeight: 'bold',
+    color: '#888',
   },
-  feedbackContainer: {
+  chartContainer: {
     display: 'flex',
     justifyContent: 'space-around',
-    marginBottom: '24px',
+    alignItems: 'flex-end',
+    height: '150px',
+    gap: '10px',
   },
-  feedbackItem: {
+  chartBar: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '8px',
+    flex: 1,
   },
-  feedbackEmoji: {
-    fontSize: '32px',
-  },
-  feedbackCount: {
-    fontSize: '28px',
-    fontWeight: 'bold',
-    color: '#22c55e',
-  },
-  feedbackCountRed: {
-    fontSize: '28px',
-    fontWeight: 'bold',
-    color: '#ef4444',
-  },
-  feedbackLabel: {
-    color: '#666',
-    fontSize: '13px',
-  },
-  satisfactionBar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    padding: '16px',
-    backgroundColor: '#1a1a1a',
-    borderRadius: '8px',
-    color: '#888',
-  },
-  satisfactionValue: {
-    color: '#22c55e',
-    fontWeight: 'bold',
-    fontSize: '20px',
-  },
-  eventsCard: {
-    backgroundColor: '#111',
-    borderRadius: '12px',
-    padding: '24px',
-    border: '1px solid #222',
-  },
-  eventsTable: {
-    overflowX: 'auto',
-  },
-  table: {
+  barContainer: {
     width: '100%',
-    borderCollapse: 'collapse',
+    height: '100px',
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  bar: {
+    width: '30px',
+    background: 'linear-gradient(to top, #4F46E5, #818CF8)',
+    borderRadius: '4px 4px 0 0',
+    minHeight: '5px',
+  },
+  barLabel: {
+    fontSize: '11px',
+    color: '#888',
+    marginTop: '8px',
+  },
+  barValue: {
+    fontSize: '12px',
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  eventsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  eventItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '10px',
+    background: '#2a2a3e',
+    borderRadius: '8px',
+  },
+  eventIcon: {
+    fontSize: '16px',
+  },
+  eventDetails: {
+    flex: 1,
+    color: '#ccc',
     fontSize: '14px',
   },
-  noEvents: {
-    color: '#666',
-    textAlign: 'center',
-    padding: '40px',
+  eventTime: {
+    color: '#888',
+    fontSize: '12px',
   },
-  badge: {
-    padding: '4px 8px',
-    borderRadius: '4px',
+  refreshBtn: {
+    display: 'block',
+    width: '100%',
+    padding: '15px',
+    background: '#2a2a3e',
+    border: 'none',
+    borderRadius: '8px',
     color: '#fff',
-    fontSize: '12px',
-  },
-  modelCell: {
-    color: '#666',
-    fontSize: '12px',
+    fontSize: '16px',
+    cursor: 'pointer',
+    marginTop: '20px',
   },
 };
 
-// Agregar estilos globales
+// Agregar keyframes para el spinner
 if (typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = `
     @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+      to { transform: rotate(360deg); }
     }
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    table th, table td { padding: 12px; text-align: left; border-bottom: 1px solid #222; }
-    table th { color: #666; font-weight: normal; }
-    input:focus, button:focus { outline: none; }
-    input:focus { border-color: #3b82f6; }
-    button:hover { opacity: 0.9; }
   `;
   document.head.appendChild(style);
 }
+

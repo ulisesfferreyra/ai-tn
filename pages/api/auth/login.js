@@ -1,13 +1,11 @@
 // pages/api/auth/login.js
 import { validateClient } from '../../../lib/clients';
-import { serialize } from 'cookie';
 
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -45,20 +43,10 @@ export default async function handler(req, res) {
     // Crear token simple (base64 de username:password)
     const token = Buffer.from(`${username}:${password}`).toString('base64');
 
-    // Setear cookie
-    const cookie = serialize('auth_token', token, {
-      httpOnly: false, // Necesario para que el frontend pueda leerla
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 7, // 7 días
-    });
-
-    res.setHeader('Set-Cookie', cookie);
-
     return res.status(200).json({
       success: true,
       message: 'Login successful',
+      token: token, // Devolver token para guardar en localStorage
       client: result.client,
     });
 
@@ -70,4 +58,3 @@ export default async function handler(req, res) {
     });
   }
 }
-

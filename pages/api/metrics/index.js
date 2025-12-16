@@ -1,22 +1,26 @@
 // pages/api/metrics/index.js
-//
+// Endpoint para obtener métricas del dashboard
+
 import { getMetrics, getRecentEvents } from '../../../lib/metrics';
 import { AUTHORIZED_CLIENTS } from '../../../lib/clients';
 
 function parseToken(token) {
+  if (!token) return null;
   try {
-    const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
-    if (decoded.exp < Date.now()) return null;
-    return decoded;
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    const [username, password] = decoded.split(':');
+    return { username, password };
   } catch {
     return null;
   }
 }
 
 export default async function handler(req, res) {
+  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cookie');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -26,64 +30,71 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Verificar autenticación
-  const authHeader = req.headers.authorization;
-  const cookieToken = req.cookies?.auth_token;
-  const token = authHeader?.replace('Bearer ', '') || cookieToken;
-
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  const client = parseToken(token);
-  if (!client) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
-
-  // Verificar que el cliente existe
-  if (!AUTHORIZED_CLIENTS[client.username]) {
-    return res.status(403).json({ error: 'Client not authorized' });
-  }
-
   try {
-    const metrics = await getMetrics(client.domain);
-    const recentEvents = await getRecentEvents(client.domain, 20);
+    // Obtener token de la cookie
+    const cookies = req.headers.cookie || '';
+    const tokenMatch = cookies.match(/auth_token=([^;]+)/);
+    const token = tokenMatch ? tokenMatch[1] : null;
 
-    if (!metrics) {
-      return res.json({
-        success: true,
-        client: {
-          username: client.username,
-          domain: client.domain,
-          name: client.name,
-        },
-        metrics: {
-          totalGenerations: 0,
-          successRate: 0,
-          errors: 0,
-          avgDuration: 0,
-          feedbackScore: 0,
-          likes: 0,
-          dislikes: 0,
-          satisfactionRate: 0,
-          sizeDistribution: [],
-        },
-        recentEvents: [],
-      });
+    if (!token) {
+      console.log('❌ No auth token provided');
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    return res.json({
+    // Parsear y validar token
+    const credentials = parseToken(token);
+    if (!credentials) {
+      console.log('❌ Invalid token format');
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Verificar que el cliente existe
+    const client = AUTHORIZED_CLIENTS[credentials.username];
+    if (!client) {
+      console.log('❌ Client not found:', credentials.username);
+      return res.status(401).json({ error: 'Invalid client' });
+    }
+
+    // Verificar contraseña
+    if (client.password !== credentials.password) {
+      console.log('❌ Invalid password for client:', credentials.username);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const clientDomain = client.domain;
+    console.log(`📊 Fetching metrics for client: ${credentials.username} (${clientDomain})`);
+
+    // Obtener métricas
+    const metrics = await getMetrics(clientDomain);
+    
+    // Obtener eventos recientes
+    const recentEvents = await getRecentEvents(clientDomain, 20);
+
+    console.log(`✅ Metrics fetched successfully for ${clientDomain}`);
+    console.log(`   - isLiveData: ${metrics.isLiveData}`);
+    console.log(`   - Total try-ons: ${metrics.totals?.tryons || 0}`);
+
+    return res.status(200).json({
       success: true,
       client: {
-        username: client.username,
-        domain: client.domain,
+        username: credentials.username,
         name: client.name,
+        domain: clientDomain,
       },
       metrics,
-      recentEvents,
+      recentEvents: recentEvents.events || [],
+      recentFeedback: recentEvents.feedback || [],
+      isLiveData: metrics.isLiveData,
+      demoMessage: metrics.demoMessage || null,
     });
+
   } catch (error) {
-    console.error('[METRICS API] Error:', error);
-    return res.status(500).json({ error: 'Error fetching metrics' });
+    console.error('❌ Error in /api/metrics:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error fetching metrics',
+      details: error.message,
+    });
   }
 }
+

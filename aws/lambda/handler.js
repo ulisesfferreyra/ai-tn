@@ -1,6 +1,6 @@
-const { processTryOn } = require('../src/tryon-service');
+import { processTryOn } from '../src/tryon-service.js';
 
-exports.handler = async (event = {}) => {
+export const handler = async (event = {}) => {
   const meta = {
     method: event.httpMethod || event.requestContext?.http?.method || event.method || 'POST',
     headers: event.headers,

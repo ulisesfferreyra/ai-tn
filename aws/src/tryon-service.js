@@ -1,7 +1,8 @@
 // Servicio reutilizable para el flujo Try-On (sin dependencias de frameworks)
-const sharp = require('sharp');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const OpenAI = require('openai'); // Preanálisis con Vision para elegir imagen de producto
+import sharp from 'sharp';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai'; // Preanálisis con Vision para elegir imagen de producto
+import { uploadAndPresignImage } from './s3-helper.js';
 
 const IS_DEV = process.env.NODE_ENV !== 'production';
 const log = (...a) => IS_DEV && console.log('[TRY-ON]', ...a);
@@ -735,12 +736,15 @@ async function processTryOn(payload = {}, meta = {}) {
     }
 
     log('Imagen generada OK');
+    // Subir a S3 y obtener URL firmada (15 min por defecto o TRYON_URL_EXPIRES_SECONDS)
+    const { url: imageUrl, key: s3Key } = await uploadAndPresignImage({ imageBase64, contentType: 'image/jpeg' });
+    log('S3 upload OK', { key: s3Key });
     return {
       statusCode: 200,
       body: {
         success: true,
-        description: 'Imagen generada exitosamente con IA',
-        generatedImage: `data:image/jpeg;base64,${imageBase64}`,
+        description: 'Imagen generada y subida a S3 exitosamente',
+        imageUrl,
         size: size || 'M',
         orientation: selectedOrientation,
         timestamp: new Date().toISOString(),
@@ -791,9 +795,19 @@ async function processTryOn(payload = {}, meta = {}) {
         body: {
           success: true,
           description: 'Imagen procesada (modo fallback)',
-          originalImage: body.userImage,
-          generatedImage: body.userImage,
-          finalImage: body.userImage,
+          imageUrl: await (async () => {
+            try {
+              const { url, key } = await uploadAndPresignImage({
+                imageBase64: body.userImage.startsWith('data:image') ? body.userImage.split(',')[1] : body.userImage,
+                contentType: 'image/jpeg',
+              });
+              log('S3 upload fallback OK', { key });
+              return url;
+            } catch (uploadErr) {
+              warn('Fallback upload failed, no URL retornado:', uploadErr.message);
+              return null;
+            }
+          })(),
           size: body.size || 'M',
           orientation: ALLOWED_ORIENTATIONS.has(body.userOrientation) ? body.userOrientation : 'front',
           fallback: true,
@@ -820,4 +834,4 @@ async function processTryOn(payload = {}, meta = {}) {
   }
 }
 
-module.exports = { processTryOn };
+export { processTryOn };

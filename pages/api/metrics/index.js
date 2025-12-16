@@ -7,7 +7,9 @@ import { AUTHORIZED_CLIENTS } from '../../../lib/clients';
 function parseToken(token) {
   if (!token) return null;
   try {
-    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    // Remover "Bearer " si está presente
+    const cleanToken = token.replace('Bearer ', '');
+    const decoded = Buffer.from(cleanToken, 'base64').toString('utf-8');
     const [username, password] = decoded.split(':');
     return { username, password };
   } catch {
@@ -19,8 +21,7 @@ export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cookie');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -31,10 +32,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Obtener token de la cookie
-    const cookies = req.headers.cookie || '';
-    const tokenMatch = cookies.match(/auth_token=([^;]+)/);
-    const token = tokenMatch ? tokenMatch[1] : null;
+    // Obtener token del header Authorization
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.replace('Bearer ', '');
 
     if (!token) {
       console.log('❌ No auth token provided');
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
     }
 
     // Verificar que el cliente existe
-    const client = AUTHORIZED_CLIENTS[credentials.username];
+    const client = AUTHORIZED_CLIENTS[credentials.username?.toLowerCase()];
     if (!client) {
       console.log('❌ Client not found:', credentials.username);
       return res.status(401).json({ error: 'Invalid client' });
@@ -97,4 +97,3 @@ export default async function handler(req, res) {
     });
   }
 }
-

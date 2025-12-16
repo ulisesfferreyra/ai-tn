@@ -19,10 +19,33 @@ export default function Dashboard() {
     checkSession();
   }, []);
 
+  const getAuthToken = () => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('auth_token');
+  };
+
+  const setAuthToken = (token) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('auth_token', token);
+  };
+
+  const removeAuthToken = () => {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem('auth_token');
+  };
+
   const checkSession = async () => {
+    const token = getAuthToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch('/api/metrics', {
-        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
       
       if (res.ok) {
@@ -33,10 +56,12 @@ export default function Dashboard() {
         setRecentEvents(data.recentEvents || []);
         setDemoMessage(data.demoMessage);
       } else {
+        removeAuthToken();
         setIsLoggedIn(false);
       }
     } catch (err) {
       console.log('No session found');
+      removeAuthToken();
       setIsLoggedIn(false);
     } finally {
       setLoading(false);
@@ -53,16 +78,18 @@ export default function Dashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
-        credentials: 'include',
       });
 
       const data = await res.json();
 
       if (res.ok && data.success) {
+        console.log('✅ Login successful:', data.client);
+        // Guardar token en localStorage
+        setAuthToken(data.token);
         setIsLoggedIn(true);
         setClient(data.client);
-        // Cargar métricas después del login exitoso
-        await fetchMetrics();
+        // Cargar métricas
+        await fetchMetrics(data.token);
       } else {
         setError(data.error || 'Invalid credentials');
       }
@@ -73,25 +100,87 @@ export default function Dashboard() {
     }
   };
 
-  const fetchMetrics = async () => {
+  const fetchMetrics = async (tokenOverride) => {
+    const token = tokenOverride || getAuthToken();
+    if (!token) {
+      console.log('📊 No auth token available');
+      setMetrics(getDemoMetrics());
+      setDemoMessage('⚠️ Sesión no válida. Mostrando datos de demostración.');
+      return;
+    }
+
+    console.log('📊 Fetching metrics...');
     try {
       const res = await fetch('/api/metrics', {
-        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
+      
+      console.log('📊 Metrics response status:', res.status);
       
       if (res.ok) {
         const data = await res.json();
+        console.log('📊 Metrics data received:', data.metrics ? 'yes' : 'no');
         setMetrics(data.metrics);
         setRecentEvents(data.recentEvents || []);
         setDemoMessage(data.demoMessage);
+      } else {
+        console.error('📊 Metrics fetch failed:', res.status);
+        setMetrics(getDemoMetrics());
+        setDemoMessage('⚠️ No se pudieron cargar las métricas. Mostrando datos de demostración.');
       }
     } catch (err) {
-      console.error('Error fetching metrics:', err);
+      console.error('📊 Error fetching metrics:', err);
+      setMetrics(getDemoMetrics());
+      setDemoMessage('⚠️ Error de conexión. Mostrando datos de demostración.');
     }
   };
 
+  const getDemoMetrics = () => {
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      const tryons = Math.floor(Math.random() * 20) + 5;
+      const successes = Math.floor(tryons * 0.9);
+      const conversions = Math.floor(successes * 0.2);
+      last7Days.push({
+        date: dateStr,
+        tryons,
+        successes,
+        likes: Math.floor(successes * 0.5),
+        dislikes: Math.floor(successes * 0.05),
+        conversions,
+      });
+    }
+    
+    const totals = last7Days.reduce((acc, day) => ({
+      tryons: acc.tryons + day.tryons,
+      successes: acc.successes + day.successes,
+      errors: acc.errors + (day.tryons - day.successes),
+      likes: acc.likes + day.likes,
+      dislikes: acc.dislikes + day.dislikes,
+      conversions: acc.conversions + day.conversions,
+    }), { tryons: 0, successes: 0, errors: 0, likes: 0, dislikes: 0, conversions: 0 });
+    
+    return {
+      totals,
+      rates: {
+        successRate: 90,
+        conversionRate: 18,
+        satisfactionRate: 85,
+      },
+      today: last7Days[last7Days.length - 1],
+      sizeDistribution: { XS: 5, S: 15, M: 30, L: 20, XL: 10 },
+      avgProcessingTimeMs: 9500,
+      last7Days,
+    };
+  };
+
   const handleLogout = () => {
-    document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    removeAuthToken();
     setIsLoggedIn(false);
     setClient(null);
     setMetrics(null);
@@ -103,10 +192,20 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div style={styles.container}>
+        <Head>
+          <title>Cargando... - AI Try-On Dashboard</title>
+        </Head>
         <div style={styles.loader}>
-          <div style={styles.spinner}></div>
-          <p>Cargando...</p>
+          <div style={styles.spinnerContainer}>
+            <div style={styles.spinner}></div>
+          </div>
+          <p style={{ color: '#888' }}>Cargando...</p>
         </div>
+        <style jsx global>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     );
   }
@@ -254,22 +353,37 @@ export default function Dashboard() {
             <div style={styles.section}>
               <h2 style={styles.sectionTitle}>📈 Últimos 7 Días</h2>
               <div style={styles.chartContainer}>
-                {metrics.last7Days?.map((day, idx) => (
-                  <div key={idx} style={styles.chartBar}>
-                    <div style={styles.barContainer}>
-                      <div 
-                        style={{
-                          ...styles.bar,
-                          height: `${Math.min((day.tryons / Math.max(...metrics.last7Days.map(d => d.tryons || 1))) * 100, 100)}%`,
-                        }}
-                      />
+                {metrics.last7Days?.map((day, idx) => {
+                  const maxTryons = Math.max(...metrics.last7Days.map(d => d.tryons || 1));
+                  const heightPercent = (day.tryons / maxTryons) * 100;
+                  return (
+                    <div key={idx} style={styles.chartBar}>
+                      <div style={styles.barContainer}>
+                        <div 
+                          style={{
+                            ...styles.bar,
+                            height: `${Math.max(heightPercent, 5)}%`,
+                          }}
+                        />
+                      </div>
+                      <span style={styles.barLabel}>
+                        {new Date(day.date).toLocaleDateString('es', { weekday: 'short' })}
+                      </span>
+                      <span style={styles.barValue}>{day.tryons}</span>
                     </div>
-                    <span style={styles.barLabel}>
-                      {new Date(day.date).toLocaleDateString('es', { weekday: 'short' })}
-                    </span>
-                    <span style={styles.barValue}>{day.tryons}</span>
-                  </div>
-                ))}
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Processing Time */}
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>⏱️ Tiempo Promedio</h2>
+              <div style={{ textAlign: 'center', padding: '20px' }}>
+                <span style={{ fontSize: '36px', fontWeight: 'bold', color: '#4F46E5' }}>
+                  {((metrics.avgProcessingTimeMs || 0) / 1000).toFixed(1)}s
+                </span>
+                <p style={{ color: '#888', marginTop: '10px' }}>por generación</p>
               </div>
             </div>
 
@@ -298,7 +412,7 @@ export default function Dashboard() {
         )}
 
         {/* Refresh Button */}
-        <button onClick={fetchMetrics} style={styles.refreshBtn}>
+        <button onClick={() => fetchMetrics()} style={styles.refreshBtn}>
           🔄 Actualizar Datos
         </button>
       </div>
@@ -334,6 +448,11 @@ const styles = {
     textAlign: 'center',
     color: '#fff',
   },
+  spinnerContainer: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginBottom: '20px',
+  },
   spinner: {
     width: '40px',
     height: '40px',
@@ -341,7 +460,6 @@ const styles = {
     borderTop: '4px solid #fff',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite',
-    margin: '0 auto 20px',
   },
   loginCard: {
     background: '#1e1e2f',
@@ -600,15 +718,3 @@ const styles = {
     marginTop: '20px',
   },
 };
-
-// Agregar keyframes para el spinner
-if (typeof document !== 'undefined') {
-  const style = document.createElement('style');
-  style.textContent = `
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-  `;
-  document.head.appendChild(style);
-}
-

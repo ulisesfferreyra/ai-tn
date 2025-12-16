@@ -3,11 +3,12 @@ import { validateClient } from '../../../lib/clients';
 import { serialize } from 'cookie';
 
 export default async function handler(req, res) {
-  // CORS
+  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -16,42 +17,57 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { username, password } = req.body || {};
+  try {
+    const { username, password } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password required' });
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Username and password are required' 
+      });
+    }
+
+    console.log(`🔐 Login attempt for: ${username}`);
+
+    // Validar credenciales
+    const result = validateClient(username, password);
+
+    if (!result.valid) {
+      console.log(`❌ Login failed for ${username}: ${result.error}`);
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid credentials' 
+      });
+    }
+
+    console.log(`✅ Login successful for ${username}`);
+
+    // Crear token simple (base64 de username:password)
+    const token = Buffer.from(`${username}:${password}`).toString('base64');
+
+    // Setear cookie
+    const cookie = serialize('auth_token', token, {
+      httpOnly: false, // Necesario para que el frontend pueda leerla
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7, // 7 días
+    });
+
+    res.setHeader('Set-Cookie', cookie);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      client: result.client,
+    });
+
+  } catch (error) {
+    console.error('❌ Login error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
   }
-
-  const client = validateClient(username, password);
-
-  if (!client) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  // Crear token simple (en producción usar JWT)
-  const token = Buffer.from(JSON.stringify({
-    username: client.username,
-    domain: client.domain,
-    name: client.name,
-    exp: Date.now() + (24 * 60 * 60 * 1000), // 24 horas
-  })).toString('base64');
-
-  // Setear cookie
-  res.setHeader('Set-Cookie', serialize('auth_token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24, // 24 horas
-    path: '/',
-  }));
-
-  return res.json({
-    success: true,
-    client: {
-      username: client.username,
-      domain: client.domain,
-      name: client.name,
-    },
-    token, // También devolver token para localStorage
-  });
 }
+

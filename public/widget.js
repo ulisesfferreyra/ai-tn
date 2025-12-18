@@ -334,10 +334,24 @@
       }
     }
     
-    console.log('📸 Imágenes encontradas: ' + urls.length);
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('📸 IMÁGENES DEL PRODUCTO DETECTADAS: ' + urls.length);
+    console.log('═══════════════════════════════════════════════════════════════');
+    
     urls.forEach(function(url, idx) {
-      console.log('   [' + idx + ']: ' + url.substring(0, 80) + '...');
+      console.log('📷 Imagen [' + idx + ']:');
+      console.log('   URL: ' + url);
+      // Mostrar preview visual en consola
+      console.log('%c ', 'font-size: 100px; background: url(' + url + ') no-repeat center; background-size: contain; padding: 50px 100px; border: 2px solid #4CAF50; border-radius: 8px;');
     });
+    
+    if(urls.length === 0) {
+      console.error('❌ NO SE ENCONTRARON IMÁGENES DEL PRODUCTO');
+      console.log('🔍 Selector usado: ' + CONFIG.imageSelector);
+      console.log('🔍 Intentá con otro selector o verificá que las imágenes existan en la página');
+    }
+    
+    console.log('═══════════════════════════════════════════════════════════════');
     
     return urls.slice(0, 4); // Máximo 4 imágenes
   }
@@ -974,21 +988,41 @@
       console.log('👤 Orientación del usuario: ' + CONFIG.userImageOrientation);
       
       // PASO 2: Obtener imágenes del producto
+      console.log('═══════════════════════════════════════════════════════════════');
       console.log('🔍 PASO 2: Obteniendo imágenes del producto...');
+      console.log('═══════════════════════════════════════════════════════════════');
       var productImageUrls = getProductImages();
       
       if(productImageUrls.length === 0) {
-        throw new Error('No se encontraron imágenes del producto');
+        throw new Error('No se encontraron imágenes del producto. Verificá el selector: ' + CONFIG.imageSelector);
       }
       
       // PASO 3: Convertir a base64 con cache busting
-      console.log('🔄 PASO 3: Convirtiendo imágenes a base64...');
+      console.log('═══════════════════════════════════════════════════════════════');
+      console.log('🔄 PASO 3: Convirtiendo ' + productImageUrls.length + ' imágenes a JPEG/base64...');
+      console.log('═══════════════════════════════════════════════════════════════');
       var productImagesBase64 = await Promise.all(productImageUrls.map(imageUrlToBase64));
       
+      // Mostrar imágenes convertidas
+      console.log('✅ Imágenes convertidas a base64:');
+      productImagesBase64.forEach(function(b64, idx) {
+        var sizeKB = (b64.length / 1024).toFixed(2);
+        var isJpeg = b64.includes('image/jpeg');
+        console.log('   [' + idx + ']: ' + sizeKB + ' KB - Formato: ' + (isJpeg ? 'JPEG ✅' : 'OTRO ⚠️'));
+      });
+      
       // PASO 4: Comprimir imágenes
+      console.log('═══════════════════════════════════════════════════════════════');
       console.log('📦 PASO 4: Comprimiendo imágenes...');
+      console.log('═══════════════════════════════════════════════════════════════');
       var compressedUserImage = await compressImage(userImageDataUrl, 1024, 0.75);
       var compressedProductImages = await compressImages(productImagesBase64, 1024, 0.75);
+      
+      console.log('✅ Compresión completada:');
+      console.log('   Usuario: ' + (compressedUserImage.length / 1024).toFixed(2) + ' KB');
+      compressedProductImages.forEach(function(img, idx) {
+        console.log('   Producto [' + idx + ']: ' + (img.length / 1024).toFixed(2) + ' KB');
+      });
       
       // Verificar tamaño del payload
       var totalPayloadKB = (compressedUserImage.length + compressedProductImages.reduce(function(a, i) { return a + i.length; }, 0)) / 1024;
@@ -1006,11 +1040,24 @@
       compressedProductImages = compressedProductImages.map(cleanBase64Prefix);
       
       // PASO 5: Enviar a la API
-      console.log('📤 PASO 5: Enviando a la API...');
+      console.log('═══════════════════════════════════════════════════════════════');
+      console.log('📤 PASO 5: ENVIANDO A LA API');
+      console.log('═══════════════════════════════════════════════════════════════');
       console.log('   URL: ' + CONFIG.apiUrl);
       console.log('   User orientation: ' + CONFIG.userImageOrientation);
       console.log('   Product images: ' + compressedProductImages.length);
       console.log('   Size: ' + CONFIG.selectedSize);
+      
+      // Mostrar preview visual de imagen del usuario
+      console.log('📷 IMAGEN USUARIO (preview en consola):');
+      console.log('%c     ', 'font-size: 100px; background: url(' + compressedUserImage + ') no-repeat center; background-size: contain;');
+      
+      // Mostrar preview visual de imágenes del producto
+      console.log('📷 IMÁGENES PRODUCTO (preview en consola):');
+      compressedProductImages.forEach(function(img, idx) {
+        console.log('   [' + idx + ']:');
+        console.log('%c     ', 'font-size: 100px; background: url(' + img + ') no-repeat center; background-size: contain;');
+      });
       
       var response = await fetch(CONFIG.apiUrl, {
         method: 'POST',

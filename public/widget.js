@@ -270,20 +270,93 @@
   // ============================================
   // OBTENER IMÁGENES DEL PRODUCTO (MÚLTIPLES ESTRATEGIAS)
   // ============================================
+  // Extraer la mejor URL de srcset (la más grande)
+  function getBestUrlFromSrcset(srcset) {
+    if (!srcset) return null;
+    
+    // srcset formato: "url1 480w, url2 640w, url3 1024w"
+    var entries = srcset.split(',').map(function(entry) {
+      var parts = entry.trim().split(/\s+/);
+      var url = parts[0];
+      var width = parseInt(parts[1]) || 0;
+      return { url: url, width: width };
+    });
+    
+    // Ordenar por ancho descendente y tomar la más grande
+    entries.sort(function(a, b) { return b.width - a.width; });
+    
+    var bestUrl = entries[0]?.url;
+    if (bestUrl && !bestUrl.startsWith('http')) {
+      bestUrl = 'https:' + bestUrl; // Agregar protocolo si falta
+    }
+    
+    return bestUrl;
+  }
+
   function getProductImages() {
     console.log('🔍 Buscando imágenes del producto...');
     var urls = [];
     
     // Estrategia 1: Selector configurado
-    var images = document.querySelectorAll(CONFIG.imageSelector);
-    console.log('   Estrategia 1 (' + CONFIG.imageSelector + '): ' + images.length + ' imágenes');
+    var elements = document.querySelectorAll(CONFIG.imageSelector);
+    console.log('   Estrategia 1 (' + CONFIG.imageSelector + '): ' + elements.length + ' elementos');
     
-    images.forEach(function(img) {
-      var url = img.dataset?.zoom || img.dataset?.zoomImage || img.dataset?.src || img.src;
+    elements.forEach(function(el) {
+      var url = null;
+      
+      // CASO ESPECIAL: Si es un <a> tag (ej: fancybox), usar href
+      if (el.tagName === 'A') {
+        url = el.href;
+        if (url) console.log('      🔗 Usando href (link):', url.substring(0, 60) + '...');
+      } 
+      // Si es un <img> tag
+      else if (el.tagName === 'IMG') {
+        // PRIORIDAD: srcset > data-srcset > data-zoom > data-src > src
+        // Esto evita los placeholders GIF
+        
+        // 1. Intentar srcset (imágenes lazy-loaded de Tiendanube)
+        if (el.srcset) {
+          url = getBestUrlFromSrcset(el.srcset);
+          if (url) console.log('      📷 Usando srcset:', url.substring(0, 60) + '...');
+        }
+        
+        // 2. Intentar data-srcset
+        if (!url && el.dataset?.srcset) {
+          url = getBestUrlFromSrcset(el.dataset.srcset);
+          if (url) console.log('      📷 Usando data-srcset:', url.substring(0, 60) + '...');
+        }
+        
+        // 3. Otros atributos comunes
+        if (!url) {
+          url = el.dataset?.zoom || el.dataset?.zoomImage || el.dataset?.src;
+          if (url) console.log('      📷 Usando dataset:', url.substring(0, 60) + '...');
+        }
+        
+        // 4. Último recurso: src (puede ser placeholder)
+        if (!url && el.src && !el.src.startsWith('data:')) {
+          url = el.src;
+          console.log('      📷 Usando src:', url.substring(0, 60) + '...');
+        }
+      }
+      // Cualquier otro elemento, buscar atributos comunes
+      else {
+        url = el.dataset?.src || el.dataset?.zoom || el.getAttribute('href');
+        if (url) console.log('      📷 Usando atributo genérico:', url.substring(0, 60) + '...');
+      }
+      
+      // Agregar protocolo si falta
+      if (url && !url.startsWith('http') && !url.startsWith('data:')) {
+        url = 'https:' + url;
+      }
+      
+      // Validar URL
       if(url && urls.indexOf(url) === -1 && 
          !url.includes('logo') && !url.includes('icon') && !url.includes('banner') &&
-         !url.includes('placeholder') && img.offsetWidth > 100) {
-        urls.push(url);
+         !url.includes('placeholder') && !url.startsWith('data:')) {
+        // Para <a> tags no podemos verificar offsetWidth, así que solo verificamos para <img>
+        if (el.tagName !== 'IMG' || el.offsetWidth > 100) {
+          urls.push(url);
+        }
       }
     });
     
@@ -302,8 +375,21 @@
       for(var i = 0; i < commonSelectors.length; i++) {
         var found = document.querySelectorAll(commonSelectors[i]);
         found.forEach(function(img) {
-          var url = img.dataset?.zoom || img.dataset?.src || img.src;
-          if(url && urls.indexOf(url) === -1 && !url.includes('logo') && img.offsetWidth > 100) {
+          // Usar srcset primero
+          var url = getBestUrlFromSrcset(img.srcset) || 
+                    getBestUrlFromSrcset(img.dataset?.srcset) ||
+                    img.dataset?.zoom || img.dataset?.src;
+          
+          // Evitar src si es placeholder
+          if (!url && img.src && !img.src.startsWith('data:')) {
+            url = img.src;
+          }
+          
+          if (url && !url.startsWith('http') && !url.startsWith('data:')) {
+            url = 'https:' + url;
+          }
+          
+          if(url && urls.indexOf(url) === -1 && !url.includes('logo') && !url.startsWith('data:') && img.offsetWidth > 100) {
             urls.push(url);
           }
         });
@@ -319,8 +405,13 @@
       var bestImg = null;
       
       allImages.forEach(function(img) {
-        if(img.src && !img.src.includes('logo') && !img.src.includes('icon') &&
-           !img.src.includes('banner') && !img.src.includes('avatar')) {
+        // Obtener URL real (no placeholder)
+        var imgUrl = getBestUrlFromSrcset(img.srcset) || 
+                     getBestUrlFromSrcset(img.dataset?.srcset) ||
+                     (img.src && !img.src.startsWith('data:') ? img.src : null);
+        
+        if(imgUrl && !imgUrl.includes('logo') && !imgUrl.includes('icon') &&
+           !imgUrl.includes('banner') && !imgUrl.includes('avatar')) {
           var size = img.offsetWidth * img.offsetHeight;
           if(size > maxSize && size > 40000) { // Mínimo 200x200
             maxSize = size;
@@ -330,7 +421,18 @@
       });
       
       if(bestImg) {
-        urls.push(bestImg.src);
+        // Usar srcset primero, no src (puede ser placeholder)
+        var bestUrl = getBestUrlFromSrcset(bestImg.srcset) || 
+                      getBestUrlFromSrcset(bestImg.dataset?.srcset) ||
+                      (bestImg.src && !bestImg.src.startsWith('data:') ? bestImg.src : null);
+        
+        if (bestUrl && !bestUrl.startsWith('http')) {
+          bestUrl = 'https:' + bestUrl;
+        }
+        
+        if (bestUrl) {
+          urls.push(bestUrl);
+        }
       }
     }
     
@@ -357,6 +459,48 @@
   }
 
   // ============================================
+  // VALIDAR SI UNA IMAGEN ES VÁLIDA (no negra/vacía)
+  // ============================================
+  function isImageValid(canvas) {
+    try {
+      var ctx = canvas.getContext('2d');
+      var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      var data = imageData.data;
+      
+      var totalPixels = data.length / 4;
+      var blackPixels = 0;
+      var threshold = 30; // Píxeles con valores < 30 se consideran "negros"
+      
+      // Muestrear cada 100 píxeles para rapidez
+      for (var i = 0; i < data.length; i += 400) {
+        var r = data[i];
+        var g = data[i + 1];
+        var b = data[i + 2];
+        
+        if (r < threshold && g < threshold && b < threshold) {
+          blackPixels++;
+        }
+      }
+      
+      var sampledPixels = totalPixels / 100;
+      var blackPercentage = (blackPixels / sampledPixels) * 100;
+      
+      console.log('   🔍 Análisis: ' + blackPercentage.toFixed(1) + '% píxeles negros');
+      
+      // Si más del 90% es negro, la imagen es inválida
+      if (blackPercentage > 90) {
+        console.warn('   ⚠️ Imagen detectada como NEGRA/INVÁLIDA (>' + blackPercentage.toFixed(1) + '% negro)');
+        return false;
+      }
+      
+      return true;
+    } catch(e) {
+      console.warn('   ⚠️ No se pudo analizar la imagen:', e.message);
+      return true; // Asumir válida si no podemos analizar
+    }
+  }
+
+  // ============================================
   // CONVERTIR URL A BASE64 (SIEMPRE JPEG)
   // Convierte cualquier formato (WebP, PNG, etc.) a JPEG
   // para compatibilidad con OpenAI Vision
@@ -376,13 +520,20 @@
           var ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
           
+          // Validar que la imagen no sea negra/vacía
+          if (!isImageValid(canvas)) {
+            console.warn('   ⛔ Imagen descartada por ser negra/inválida');
+            resolve(null); // Retornar null para filtrar después
+            return;
+          }
+          
           // Siempre convertir a JPEG para compatibilidad con OpenAI
           var jpegDataUrl = canvas.toDataURL('image/jpeg', 0.9);
           console.log('✅ Imagen convertida a JPEG: ' + (jpegDataUrl.length / 1024).toFixed(2) + ' KB');
           resolve(jpegDataUrl);
         } catch(e) {
           console.error('❌ Error convirtiendo imagen:', e);
-          resolve(url);
+          resolve(null); // Retornar null en caso de error
         }
       };
       
@@ -402,14 +553,28 @@
                 canvas.height = tempImg.height;
                 var ctx = canvas.getContext('2d');
                 ctx.drawImage(tempImg, 0, 0);
+                
+                // Validar que no sea negra
+                if (!isImageValid(canvas)) {
+                  console.warn('   ⛔ Imagen descartada (fallback) por ser negra/inválida');
+                  resolve(null);
+                  return;
+                }
+                
                 resolve(canvas.toDataURL('image/jpeg', 0.9));
               };
-              tempImg.onerror = function() { resolve(url); };
+              tempImg.onerror = function() { 
+                console.warn('   ⛔ Error en fallback, descartando imagen');
+                resolve(null); 
+              };
               tempImg.src = reader.result;
             };
             reader.readAsDataURL(blob);
           })
-          .catch(function() { resolve(url); });
+          .catch(function() { 
+            console.warn('   ⛔ Fetch falló, descartando imagen');
+            resolve(null); 
+          });
       };
       
       // Cache busting para evitar problemas de caché
@@ -1001,10 +1166,21 @@
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('🔄 PASO 3: Convirtiendo ' + productImageUrls.length + ' imágenes a JPEG/base64...');
       console.log('═══════════════════════════════════════════════════════════════');
-      var productImagesBase64 = await Promise.all(productImageUrls.map(imageUrlToBase64));
+      var productImagesBase64Raw = await Promise.all(productImageUrls.map(imageUrlToBase64));
+      
+      // FILTRAR imágenes nulas/inválidas (negras, con error, etc.)
+      var productImagesBase64 = productImagesBase64Raw.filter(function(img) {
+        return img !== null && img !== undefined;
+      });
+      
+      console.log('🧹 Filtrado: ' + productImagesBase64Raw.length + ' → ' + productImagesBase64.length + ' imágenes válidas');
+      
+      if(productImagesBase64.length === 0) {
+        throw new Error('Todas las imágenes del producto son inválidas o negras. Verificá que las imágenes carguen correctamente.');
+      }
       
       // Mostrar imágenes convertidas
-      console.log('✅ Imágenes convertidas a base64:');
+      console.log('✅ Imágenes válidas convertidas a base64:');
       productImagesBase64.forEach(function(b64, idx) {
         var sizeKB = (b64.length / 1024).toFixed(2);
         var isJpeg = b64.includes('image/jpeg');

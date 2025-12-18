@@ -1386,6 +1386,14 @@
       updateProgress(100);
 
       if(result.success && result.generatedImage) {
+        // 🚨 VALIDACIÓN: Verificar que la imagen tenga un tamaño mínimo razonable
+        var MIN_IMAGE_LENGTH = 1000;
+        if (result.generatedImage.length < MIN_IMAGE_LENGTH) {
+          console.error('❌ ERROR: Imagen generada muy corta (' + result.generatedImage.length + ' chars)');
+          console.error('❌ Contenido:', result.generatedImage);
+          throw new Error('El servidor no pudo generar la imagen correctamente. Intenta de nuevo.');
+        }
+        
         var cleanedImage = cleanBase64Prefix(result.generatedImage);
         document.getElementById('result-image').src = cleanedImage;
         setTimeout(function() { showStep('step-result'); }, 500);

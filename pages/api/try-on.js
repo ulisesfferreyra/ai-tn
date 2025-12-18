@@ -385,19 +385,21 @@ function ensureCors(req, res) {
 // ───────────────────────────────────────────────────────────────────────────────
 // PASO 1: Análisis previo con OpenAI Vision para determinar qué imagen usar
 // ───────────────────────────────────────────────────────────────────────────────
-async function analyzeProductImages(userImageBase64, productImagesArray) {
+async function analyzeProductImages(userImageBase64, productImagesArray, userReportedSize, selectedSize) {
   // Logs visibles en Vercel
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('🔍 INICIANDO ANÁLISIS CON OPENAI VISION');
   console.log('═══════════════════════════════════════════════════════════════');
   console.log(`📸 Imágenes recibidas: 1 usuario + ${productImagesArray?.length || 0} producto`);
   console.log(`📏 Tamaño imagen usuario: ${userImageBase64 ? (userImageBase64.length / 1024).toFixed(2) + ' KB' : 'N/A'}`);
+  console.log(`📏 Talle regular usuario: ${userReportedSize}, Talle a probar: ${selectedSize}`);
   
   log('═══════════════════════════════════════════════════════════════');
   log('🔍 INICIANDO ANÁLISIS CON OPENAI VISION');
   log('═══════════════════════════════════════════════════════════════');
   log(`📸 Imágenes recibidas: 1 usuario + ${productImagesArray?.length || 0} producto`);
   log(`📏 Tamaño imagen usuario: ${userImageBase64 ? (userImageBase64.length / 1024).toFixed(2) + ' KB' : 'N/A'}`);
+  log(`📏 Talle regular usuario: ${userReportedSize}, Talle a probar: ${selectedSize}`);
   
   if (!productImagesArray || productImagesArray.length === 0) {
     warn('⚠️ No se recibieron imágenes del producto para análisis');
@@ -415,10 +417,6 @@ async function analyzeProductImages(userImageBase64, productImagesArray) {
   log(`🤖 Modelo OpenAI a usar: ${OPENAI_MODEL}`);
 
   const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-
-  // Obtener los talles del usuario
-  const userReportedSize = req?.body?.userRegularSize || req?.body?.size || 'unknown'; // Talle habitual
-  const selectedSize = (req?.body?.size || 'M').toUpperCase(); // Talle a probar
   
   const analysisPrompt = `You are analyzing product images to identify orientation and fit.
 
@@ -1006,7 +1004,9 @@ export default async function handler(req, res) {
     
     const analysisResult = await analyzeProductImages(
       processedUserImage.toString('base64'),
-      productImagesArray
+      productImagesArray,
+      userRegularSize || size || 'unknown', // Talle habitual del usuario
+      selectedSize // Talle que quiere probar
     );
     
     let { useImageIndex } = analysisResult;

@@ -76,15 +76,20 @@
           var ctx = canvas.getContext('2d');
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = 'high';
+          
+          // Fondo blanco para manejar transparencia (PNG/WebP con alpha)
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
           
+          // SIEMPRE JPEG para compatibilidad con OpenAI Vision
           var compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
           
           var originalSizeKB = (dataUrl.length / 1024).toFixed(2);
           var compressedSizeKB = (compressedDataUrl.length / 1024).toFixed(2);
           var reduction = (100 - (compressedDataUrl.length / dataUrl.length * 100)).toFixed(1);
           
-          console.log('📦 Imagen comprimida: ' + originalSizeKB + 'KB → ' + compressedSizeKB + 'KB (-' + reduction + '%)');
+          console.log('📦 Imagen comprimida a JPEG: ' + originalSizeKB + 'KB → ' + compressedSizeKB + 'KB (-' + reduction + '%)');
           console.log('   Dimensiones: ' + img.width + 'x' + img.height + ' → ' + width + 'x' + height);
           
           resolve(compressedDataUrl);
@@ -338,41 +343,65 @@
   }
 
   // ============================================
-  // CONVERTIR URL A BASE64 CON CACHE BUSTING
+  // CONVERTIR URL A BASE64 (SIEMPRE JPEG)
+  // Convierte cualquier formato (WebP, PNG, etc.) a JPEG
+  // para compatibilidad con OpenAI Vision
   // ============================================
   async function imageUrlToBase64(url) {
-    try {
-      // Cache busting
-      var separator = url.includes('?') ? '&' : '?';
-      var cacheBustUrl = url + separator + '_cb=' + Date.now();
+    console.log('🔄 Convirtiendo imagen a JPEG:', url.substring(0, 50) + '...');
+    
+    return new Promise(function(resolve) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
       
-      var response = await fetch(cacheBustUrl);
-      var blob = await response.blob();
-      
-      return new Promise(function(resolve) {
-        var reader = new FileReader();
-        reader.onloadend = function() { resolve(reader.result); };
-        reader.readAsDataURL(blob);
-      });
-    } catch(e) {
-      console.warn('⚠️ No se pudo convertir imagen:', url);
-      
-      // Fallback: usar canvas
-      return new Promise(function(resolve) {
-        var img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = function() {
+      img.onload = function() {
+        try {
           var canvas = document.createElement('canvas');
           canvas.width = img.width;
           canvas.height = img.height;
           var ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
-          resolve(canvas.toDataURL('image/jpeg', 0.9));
-        };
-        img.onerror = function() { resolve(url); };
-        img.src = url;
-      });
-    }
+          
+          // Siempre convertir a JPEG para compatibilidad con OpenAI
+          var jpegDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+          console.log('✅ Imagen convertida a JPEG: ' + (jpegDataUrl.length / 1024).toFixed(2) + ' KB');
+          resolve(jpegDataUrl);
+        } catch(e) {
+          console.error('❌ Error convirtiendo imagen:', e);
+          resolve(url);
+        }
+      };
+      
+      img.onerror = function() {
+        console.warn('⚠️ Error cargando imagen, intentando fetch...');
+        // Fallback: intentar con fetch
+        fetch(url)
+          .then(function(response) { return response.blob(); })
+          .then(function(blob) {
+            var reader = new FileReader();
+            reader.onloadend = function() {
+              // Convertir el resultado a JPEG usando canvas
+              var tempImg = new Image();
+              tempImg.onload = function() {
+                var canvas = document.createElement('canvas');
+                canvas.width = tempImg.width;
+                canvas.height = tempImg.height;
+                var ctx = canvas.getContext('2d');
+                ctx.drawImage(tempImg, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg', 0.9));
+              };
+              tempImg.onerror = function() { resolve(url); };
+              tempImg.src = reader.result;
+            };
+            reader.readAsDataURL(blob);
+          })
+          .catch(function() { resolve(url); });
+      };
+      
+      // Cache busting para evitar problemas de caché
+      var separator = url.includes('?') ? '&' : '?';
+      img.src = url + separator + '_cb=' + Date.now();
+    });
   }
 
   // ============================================
@@ -652,20 +681,34 @@
       <div id="step-confirm" class="ai-step">
         <div style="display: flex; align-items: center; margin-bottom: 20px;">
           <button class="ai-back-btn" id="back-to-upload">‹</button>
-          <h2 style="margin: 0;">Tu foto:</h2>
+          <h2 style="margin: 0; font-size: 20px;">Tus fotos:</h2>
         </div>
         
-        <div style="text-align: center; margin-bottom: 20px;">
-          <img id="user-preview" style="max-width: 200px; max-height: 200px; border-radius: 12px; border: 3px solid #4CAF50;">
+        <div style="display: flex; gap: 15px; margin-bottom: 30px;">
+          <div style="width: 80px; height: 80px; border-radius: 8px; overflow: hidden; position: relative; background: #f5f5f5;">
+            <img id="user-preview" style="width: 100%; height: 100%; object-fit: cover;">
+            <div id="user-preview-check" style="position: absolute; top: 5px; left: 5px; width: 20px; height: 20px; background: #4CAF50; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+          </div>
+          <div style="width: 80px; height: 80px; border: 2px dashed #ddd; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: #fafafa;">
+            <div style="font-size: 24px; color: #999;">+</div>
+          </div>
         </div>
 
-        <p style="text-align: center;">Selecciona tu talle para ajustar la prenda</p>
-        <div class="ai-size">
-          <button class="ai-size-btn" data-size="XS">XS</button>
-          <button class="ai-size-btn" data-size="S">S</button>
-          <button class="ai-size-btn selected" data-size="M">M</button>
-          <button class="ai-size-btn" data-size="L">L</button>
-          <button class="ai-size-btn" data-size="XL">XL</button>
+        <div style="text-align: center; margin-bottom: 20px;">
+          <p style="font-size: 16px; color: #333; margin-bottom: 15px;">Selecciona tu talle para ajustar la prenda</p>
+          <div class="ai-size">
+            <button class="ai-arrow-btn" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #999;">‹</button>
+            <button class="ai-size-btn" data-size="XS">XS</button>
+            <button class="ai-size-btn" data-size="S">S</button>
+            <button class="ai-size-btn selected" data-size="M">M</button>
+            <button class="ai-size-btn" data-size="L">L</button>
+            <button class="ai-size-btn" data-size="XL">XL</button>
+            <button class="ai-arrow-btn" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #999;">›</button>
+          </div>
         </div>
 
         <button class="ai-btn" id="generate-btn">Generar</button>
@@ -696,14 +739,17 @@
         </div>
         
         <div style="text-align: center; margin-bottom: 20px;">
-          <img id="result-image" style="max-width: 100%; max-height: 400px; border-radius: 12px;">
+          <div style="position: relative; display: inline-block;">
+            <img id="result-image" style="max-width: 100%; max-height: 400px; border-radius: 12px; display: block;">
+            <button id="fullscreen-btn" style="position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.9); border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center;">⤢</button>
+          </div>
         </div>
         
-        <h2 style="text-align: center;">¡Wow, un match perfecto!</h2>
+        <h2 style="text-align: center; font-size: 24px; margin-bottom: 20px;">¡Wow, un match perfecto!</h2>
         
         <div style="text-align: center; margin-bottom: 25px;">
-          <p>¿Te gusta el resultado?</p>
-          <div style="display: flex; gap: 20px; justify-content: center;">
+          <p style="font-size: 14px; color: #666; margin-bottom: 12px;">¿Te gusta el resultado?</p>
+          <div style="display: flex; gap: 20px; justify-content: center; align-items: center;">
             <button class="feedback-btn dislike" id="feedback-dislike">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z" transform="rotate(180 12 12)"/>
@@ -715,10 +761,11 @@
               </svg>
             </button>
           </div>
+          <div id="feedback-message" style="font-size: 12px; color: #4CAF50; margin-top: 8px; opacity: 0; transition: opacity 0.3s ease;"></div>
         </div>
         
         <div style="display: flex; gap: 15px;">
-          <button class="ai-btn ai-btn-outline" id="retry-btn" style="flex:1">Probar otra</button>
+          <button class="ai-btn ai-btn-outline" id="download-btn" style="flex:1">Guardar</button>
           <button class="ai-btn ai-btn-dark" id="continue-btn" style="flex:1">Continuar compra</button>
         </div>
       </div>
@@ -803,8 +850,9 @@
 
   // Botones de acción
   document.getElementById('generate-btn').onclick = function(e) { e.preventDefault(); e.stopPropagation(); generate(); };
-  document.getElementById('retry-btn').onclick = function(e) { e.preventDefault(); e.stopPropagation(); retry(); };
+  document.getElementById('download-btn').onclick = function(e) { e.preventDefault(); e.stopPropagation(); downloadImage(); };
   document.getElementById('continue-btn').onclick = function(e) { e.preventDefault(); e.stopPropagation(); closeModal(); };
+  document.getElementById('fullscreen-btn').onclick = function(e) { e.preventDefault(); e.stopPropagation(); viewFullImage(); };
   
   // Feedback
   document.getElementById('feedback-like').onclick = function(e) { e.stopPropagation(); feedback('like', this); };
@@ -827,21 +875,50 @@
     }).catch(console.error);
   }
 
-  function retry() {
-    userImageDataUrl = null;
-    uploadArea.innerHTML = `
-      <div style="font-size: 48px; margin-bottom: 20px;">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
-          <circle cx="12" cy="13" r="3"/>
-        </svg>
-      </div>
-      <div style="font-size: 18px; font-weight: bold; color: #333; margin-bottom: 8px;">Seleccionar foto</div>
-      <div style="font-size: 14px; color: #666;">o arrastra y suelta aquí</div>
-    `;
-    uploadArea.classList.remove('has-image');
-    updateProgress(0);
-    showStep('step-upload');
+  // Descargar imagen generada
+  function downloadImage() {
+    var resultImg = document.getElementById('result-image');
+    if(!resultImg || !resultImg.src) return;
+    
+    var link = document.createElement('a');
+    link.download = 'mi-look-' + Date.now() + '.jpg';
+    link.href = resultImg.src;
+    link.click();
+    console.log('📥 Imagen descargada');
+  }
+
+  // Ver imagen en pantalla completa
+  function viewFullImage() {
+    var resultImg = document.getElementById('result-image');
+    if(!resultImg || !resultImg.src) return;
+    
+    var modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:9999999;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';
+    
+    var img = document.createElement('img');
+    img.src = resultImg.src;
+    img.style.cssText = 'max-width:95%;max-height:95%;object-fit:contain;border-radius:8px;';
+    
+    var closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '×';
+    closeBtn.style.cssText = 'position:absolute;top:20px;right:20px;background:rgba(255,255,255,0.9);border:none;border-radius:50%;width:40px;height:40px;font-size:24px;cursor:pointer;';
+    
+    modal.appendChild(img);
+    modal.appendChild(closeBtn);
+    document.body.appendChild(modal);
+    
+    var closeModal = function() { document.body.removeChild(modal); };
+    modal.onclick = closeModal;
+    closeBtn.onclick = closeModal;
+    
+    document.addEventListener('keydown', function handleEscape(e) {
+      if(e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    });
+    
+    console.log('🔍 Imagen en pantalla completa');
   }
 
   // ============================================

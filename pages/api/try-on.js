@@ -717,7 +717,6 @@ function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'nor
       fitDescription += ', maintaining loose relaxed drape';
     }
     
-    // Subtle brand adjustment
     if (brand_fit_tendency === 'slightly_small') {
       fitDescription += ', brand runs slightly small so fit appears marginally tighter';
     } else if (brand_fit_tendency === 'slightly_large') {
@@ -734,12 +733,21 @@ function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'nor
     };
     fitDescription = ` ${sizeMap[selectedSize] || 'regular fit'} for ${user_build} build`;
     
-    // Subtle brand adjustment for no-model scenario
     if (brand_fit_tendency === 'slightly_small') {
       fitDescription += ', slightly tighter than standard';
     } else if (brand_fit_tendency === 'slightly_large') {
       fitDescription += ', slightly looser than standard';
     }
+  }
+  
+  const sizeScale = 'XS < S < M < L < XL < XXL (smallest to largest)';
+  let sizeExplicit = `SIZE: ${selectedSize} - This determines garment looseness. `;
+  if (selectedSize === 'L' || selectedSize === 'XL' || selectedSize === 'XXL') {
+    sizeExplicit += 'Larger size = MORE fabric, LOOSER fit, LONGER sleeves.';
+  } else if (selectedSize === 'XS' || selectedSize === 'S') {
+    sizeExplicit += 'Smaller size = LESS fabric, TIGHTER fit, SHORTER sleeves.';
+  } else {
+    sizeExplicit += 'Medium = standard fit.';
   }
   
   return `Virtual try-on: Dress the user with the product garment.
@@ -749,6 +757,10 @@ CRITICAL: Preserve user's exact pose, face, and background completely unchanged.
 User: ${user_build} build (typically wears ${user_reported_size || 'unknown'})
 
 Garment: Use the FRONT view of the product (pre-identified). Match all colors, graphics, text, and design details exactly.
+
+${sizeExplicit}
+
+Size scale: ${sizeScale}
 
 Fit: ${fitDescription}
 

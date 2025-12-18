@@ -767,7 +767,22 @@ Fit: ${fitDescription}
 Apply the garment to the user maintaining exact body position, facial features, background, and lighting.
 The garment should look naturally worn with realistic fabric behavior and photorealistic quality.
 
-Do not alter pose, face, or background. Do not use back/reversed views of the garment.`;
+STRICTLY PROHIBITED:
+• Do NOT add any other person to the image
+• Do NOT change the user's face, hair, or facial expression
+• Do NOT change the user's pose, arm position, or body angle
+• Do NOT change or replace the background
+• Do NOT change the garment's color, pattern, graphics, or text
+• Do NOT change the garment's style (collar type, sleeve type, neckline)
+• Do NOT add accessories, logos, or elements not in the original garment
+• Do NOT mirror or flip the garment design
+• Do NOT change lighting or color temperature
+
+MANDATORY:
+• Output must contain ONLY the original user wearing the original garment
+• User's face must be 100% identical to input
+• Background must be 100% identical to input
+• Garment design must be 100% identical to product image`;
 }
 
 // Función de generación de prompt (compatible con formato anterior para fallback)

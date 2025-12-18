@@ -416,144 +416,79 @@ async function analyzeProductImages(userImageBase64, productImagesArray) {
 
   const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
-  const analysisPrompt = `You will receive multiple images: some showing a USER/PERSON and others showing a GARMENT (clothing product).
-Your task: Create a JSON output that will be used to generate a virtual try-on image. You must DETECT and DESCRIBE everything dynamically - never assume anything about the garment type.
+  // Obtener los talles del usuario
+  const userReportedSize = req?.body?.userRegularSize || req?.body?.size || 'unknown'; // Talle habitual
+  const selectedSize = (req?.body?.size || 'M').toUpperCase(); // Talle a probar
+  
+  const analysisPrompt = `You are analyzing product images to identify orientation and fit.
 
-CRITICAL - FOLLOW THIS EXACT SEQUENCE:
+You will receive multiple images: ONE showing a USER and OTHERS showing a GARMENT.
 
-STEP 1: ANALYZE THE USER IMAGE IN DETAIL
-•⁠  ⁠Find the image showing the person who needs garment replacement
-•⁠  ⁠Determine their pose orientation: are they facing camera (front) or facing away (back)?
-•⁠  ⁠*BODY ANALYSIS (CRITICAL FOR FIT):*
-  * Height estimation: very short / short / average / tall / very tall
-  * Build: slim / athletic / average / broad / plus-size
-  * Shoulder width: narrow / average / broad
-  * Torso length: short / average / long
-  * Arm length: short / average / long
-•⁠  ⁠These measurements are CRITICAL for adjusting garment fit to the user's body
+USER CONTEXT (provided by system):
+• User's typical size: ${userReportedSize}
 
-STEP 2: IDENTIFY ALL GARMENT IMAGES
-•⁠  ⁠Find all images showing the garment
-•⁠  ⁠For each garment image, determine: FRONT or BACK view?
+TASKS:
 
-STEP 3: MATCH GARMENT ORIENTATION TO USER ORIENTATION
-•⁠  ⁠User facing camera (front) → select FRONT view of garment
-•⁠  ⁠User facing away (back) → select BACK view of garment
+1. IDENTIFY USER IMAGE
+   - Find the user photo
+   - Analyze user build: slim / average / athletic / broad / plus-size
 
-STEP 4: DYNAMICALLY DETECT GARMENT TYPE AND ALL CHARACTERISTICS
-Detect exactly what you see:
-A) GARMENT TYPE:
-   t-shirt, tank top, sleeveless, hoodie, sweatshirt, polo, button-up, jacket, etc.
-B) SLEEVES:
-   none/sleeveless, cap sleeves, short sleeves, 3/4 sleeves, long sleeves
-C) NECKLINE:
-   crew neck, v-neck, scoop, hoodie, collar, etc.
-D) FIT & LENGTH:
-   skin-tight, fitted, regular, relaxed, loose, oversized, boxy
-   cropped, regular, long
-E) MATERIAL APPEARANCE:
-   cotton, jersey, knit, denim, etc. or unknown
-F) COLORS:
-   primary and secondary
+2. FIND HUMAN MODEL IN PRODUCT IMAGES (CRITICAL)
+   - Scan ALL product images for a person wearing the garment
+   - IF found:
+     * What's visible on the model's CHEST when facing camera? → That's FRONT
+     * Return that image index
+     * Describe how it fits the model
 
-STEP 5: DESIGN DETAILS
-•⁠  ⁠Graphics, logos, text, prints
-•⁠  ⁠Exact placement
-•⁠  ⁠Unique features (zippers, buttons, pockets, distressing)
+3. MEASURE FIT ON MODEL (if present)
+   - Sleeve length: short / regular / long / oversized
+   - Torso fit: tight / fitted / regular / loose / oversized / boxy
+   - Garment length: cropped / regular / long / oversized
+   - Overall vibe: e.g., "streetwear oversized"
 
-STEP 6: HOW IT FITS ON THE MODEL (CRITICAL - BASE SIZE REFERENCE)
-If any image shows a model wearing it, describe EXACTLY:
-•⁠  ⁠*Model's apparent body type*: slim / average / athletic / broad
-•⁠  ⁠Sleeve end point: mid-bicep / elbow / forearm / wrist / past wrist
-•⁠  ⁠Sleeve tightness: tight / fitted / loose / very loose
-•⁠  ⁠Torso fit: skin-tight / fitted / regular / loose / very loose / boxy
-•⁠  ⁠Garment end point: waist / hips / mid-thigh / knee
-•⁠  ⁠Shoulder fit: aligned / slightly dropped / dropped / oversized
-•⁠  ⁠Arm opening width (for sleeveless): narrow / medium / wide / very wide
-•⁠  ⁠Overall silhouette: description
-•⁠  ⁠*How much fabric excess*: none (tight) / minimal / moderate / significant / extreme
+4. DETERMINE BRAND FIT TENDENCY (NEW - ANALYZE FROM PHOTOS)
+   - Based on how the garment fits the model in the photos, determine:
+     * slightly_small: garment appears fitted/tight on model, brand likely runs small
+     * normal: garment fits as expected for its labeled style
+     * slightly_large: garment appears loose/oversized on model, brand likely runs large
+   - This is YOUR assessment based on visual analysis, not a system input
 
-STEP 7: SELECT ONE ADDITIONAL CONTEXT IMAGE
-•⁠  ⁠From remaining garment images, select ONE that shows:
-  1. PRIORITY: A human model wearing the garment (for fit reference)
-  2. If no model: clearest view of garment details
-•⁠  ⁠This image provides additional context for fit and details
+5. COMPARE USER VS MODEL
+   - Is user broader/slimmer/similar to model?
+   - How will this affect fit?
 
-RETURN ONLY VALID JSON (no markdown):
+6. SIZE FIT ASSESSMENT
+   - Compare user_typical_size vs selected_size: ${selectedSize}
+   - Factor in brand_fit_tendency you determined (subtle adjustment only)
+   - Generate fit_assessment: how will this specific size feel on this user?
+   - Generate size_recommendation: suggest better size only if clearly needed
+
+RETURN ONLY VALID JSON (no markdown, no code blocks):
 {
-  "user_image": {
-    "index": <number>,
-    "description": "<user pose description>",
-    "body_analysis": {
-      "height": "<very short/short/average/tall/very tall>",
-      "build": "<slim/athletic/average/broad/plus-size>",
-      "shoulder_width": "<narrow/average/broad>",
-      "torso_length": "<short/average/long>",
-      "arm_length": "<short/average/long>"
-    }
+  "user_image_index": <number>,
+  "user_build": "<slim/average/athletic/broad/plus-size>",
+  "model_found": <true/false>,
+  "front_image_index": <number or null>,
+  "model_build": "<slim/average/athletic/broad or null>",
+  "fit_on_model": {
+    "sleeve_length": "<short/regular/long/oversized or null>",
+    "torso_fit": "<tight/fitted/regular/loose/oversized/boxy or null>",
+    "garment_length": "<cropped/regular/long/oversized or null>",
+    "overall_vibe": "<description or null>"
   },
-  "garment_image": {
-    "index": <number>,
-    "description": "<garment description>",
-    "orientation": "<front/back>",
-    "reason": "<why this image was chosen>"
-  },
-  "garment_type": {
-    "category": "<exact garment type>",
-    "sleeves": "<none/sleeveless/short/long/etc>",
-    "neckline": "<crew/v-neck/collar/etc>",
-    "material_appearance": "<cotton/knit/etc or unknown>"
-  },
-  "fit_style": {
-    "body_fit": "<skin-tight/fitted/regular/loose/oversized>",
-    "garment_length": "<cropped/regular/long>"
-  },
-  "how_it_fits_on_model": {
-    "model_body_type": "<slim/average/athletic/broad>",
-    "sleeve_end_point": "<mid-bicep/elbow/wrist/etc>",
-    "sleeve_tightness": "<tight/fitted/loose>",
-    "torso_fit": "<fitted/loose/boxy>",
-    "garment_end_point": "<waist/hips/mid-thigh>",
-    "shoulder_fit": "<aligned/dropped/oversized>",
-    "arm_opening_width": "<narrow/medium/wide>",
-    "fabric_excess": "<none/minimal/moderate/significant/extreme>",
-    "overall_silhouette": "<description>"
-  },
-  "colors": {
-    "primary": "<color>",
-    "secondary": "<color or none>"
-  },
-  "design_details": {
-    "description": "<all visible graphics/text/patterns>",
-    "placement": "<exact placement>",
-    "notable_features": "<unique features>"
-  },
-  "additional_context_image": {
-    "index": <number>,
-    "reason": "<why selected: human model present / clear details / etc>",
-    "usage": "Reference only for fit accuracy and garment details. Study human model (if present) to understand realistic drape, proportions, and fabric behavior. DO NOT use for orientation decisions."
-  },
-  "size_adjustment_guide": {
-    "base_fit": "<how it fits on the model in the images>",
-    "XS_adjustment": "<how fit should change for XS: tighter, shorter sleeves, etc>",
-    "S_adjustment": "<how fit should change for S>",
-    "M_adjustment": "<how fit should change for M (reference)>",
-    "L_adjustment": "<how fit should change for L>",
-    "XL_adjustment": "<how fit should change for XL: looser, longer, more drape>",
-    "XXL_adjustment": "<how fit should change for XXL>"
-  },
-  "generation_instruction": "<FULL instruction describing: 1) User's body type, 2) EXACT garment type and features, 3) EXACT fit as seen on model, 4) How to adjust for different sizes>",
-  "reasoning": "<analysis summary including user body analysis and fit observations>",
+  "brand_fit_tendency": "<slightly_small/normal/slightly_large>",
+  "user_vs_model": "<user is broader/slimmer/similar to model>",
+  "fit_prediction": "<will be tighter/looser/same on user>",
+  "fit_assessment": "<how selected size will feel: comfortable / slightly tight / slightly loose / too tight / too loose>",
+  "size_recommendation": "<same / consider SIZE for better fit>",
+  "reasoning": "<brief explanation including why you determined this brand_fit_tendency>",
   "confidence": "<high/medium/low>"
 }
 
-CRITICAL RULES:
-•⁠  ⁠NEVER assume garment type
-•⁠  ⁠If sleeveless, explicitly say: NO SLEEVES
-•⁠  ⁠ALWAYS analyze user's body proportions
-•⁠  ⁠ALWAYS describe model's body type for fit comparison
-•⁠  ⁠size_adjustment_guide must explain how each size differs from the base (model) fit
-•⁠  ⁠generation_instruction must include user body analysis + size adjustment logic`;
+CRITICAL: 
+• Model reference is ALWAYS priority. Describe ACTUAL fit, not assumed fit.
+• If no model found: set model_found=false, all model-related fields to null, and brand_fit_tendency to "normal"
+• brand_fit_tendency must be determined by YOU based on photo analysis`;
 
   try {
     // Construir mensajes para OpenAI
@@ -650,80 +585,110 @@ CRITICAL RULES:
       const cleanedText = analysisText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       analysisData = JSON.parse(cleanedText);
       
-      // Validar estructura del JSON
-      if (!analysisData.user_image || !analysisData.garment_image) {
-        throw new Error('JSON structure invalid: missing user_image or garment_image');
-      }
+      // NUEVO FORMATO: Detectar qué formato de JSON recibimos
+      const isNewFormat = analysisData.user_image_index !== undefined;
       
-      // Validar índices - OpenAI puede retornar índices basados en 0 o en 1
-      // Detectamos automáticamente según el valor de user_image.index
-      const userIndex = analysisData.user_image.index;
-      const garmentIndex = analysisData.garment_image.index;
-      
-      // Detectar si OpenAI usa índices basados en 0 o en 1
-      // Si user_image.index es 0, entonces usa índices basados en 0
-      // Si user_image.index es 1, entonces usa índices basados en 1
-      const isZeroBased = userIndex === 0;
-      
-      if (isZeroBased) {
-        log(`📊 OpenAI usa índices basados en 0 (user_index: ${userIndex})`);
-      } else if (userIndex === 1) {
-        log(`📊 OpenAI usa índices basados en 1 (user_index: ${userIndex})`);
-      } else {
-        warn(`⚠️ user_image.index inesperado: ${userIndex}, asumiendo índices basados en 0`);
-      }
-      
-      // Convertir garment_index a índice de array de productos
       let useImageIndex = 0;
       
-      if (isZeroBased) {
-        // Índices basados en 0: user=0, product1=1, product2=2, product3=3
-        // garmentIndex 1 → array índice 0, garmentIndex 2 → array índice 1, etc.
-        if (garmentIndex >= 1 && garmentIndex <= 3) {
-          useImageIndex = garmentIndex - 1;
-          log(`📊 Conversión (base 0): garmentIndex ${garmentIndex} → array índice ${useImageIndex}`);
+      if (isNewFormat) {
+        // NUEVO FORMATO con brand_fit_tendency
+        log(`📊 Formato detectado: NUEVO (con brand_fit_tendency)`);
+        
+        const userIndex = analysisData.user_image_index;
+        const frontIndex = analysisData.front_image_index;
+        
+        // En el nuevo formato, front_image_index es directamente el índice de la imagen del producto
+        // user=0, product1=1, product2=2, product3=3 (basado en 0)
+        // Entonces: front_image_index 1 → array índice 0
+        if (frontIndex !== null && frontIndex >= 1 && frontIndex <= productImagesArray.length) {
+          useImageIndex = frontIndex - 1;
+          log(`📊 front_image_index ${frontIndex} → array índice ${useImageIndex}`);
+        } else if (frontIndex === null) {
+          log(`⚠️ No se encontró modelo, usando primera imagen del producto`);
+          useImageIndex = 0;
         } else {
-          warn(`⚠️ garment_image.index inválido para base 0: ${garmentIndex}, usando primera imagen`);
+          warn(`⚠️ front_image_index inválido: ${frontIndex}, usando primera imagen`);
           useImageIndex = 0;
         }
+        
+        // Validar rango
+        if (useImageIndex < 0 || useImageIndex >= productImagesArray.length) {
+          warn(`⚠️ Índice fuera de rango: ${useImageIndex}, usando primera imagen`);
+          useImageIndex = 0;
+        }
+        
+        analysisData.useImageIndex = useImageIndex;
+        
+        log(`🎯 Resultado del análisis (NUEVO FORMATO):`);
+        log(`   👤 Usuario: imagen ${userIndex}, build: ${analysisData.user_build}`);
+        log(`   👕 Garment: imagen ${frontIndex} (índice array: ${useImageIndex})`);
+        log(`   🏷️ Brand fit tendency: ${analysisData.brand_fit_tendency}`);
+        log(`   👥 Model found: ${analysisData.model_found}`);
+        if (analysisData.model_found && analysisData.fit_on_model) {
+          log(`   📏 Fit on model: ${analysisData.fit_on_model.overall_vibe || 'N/A'}`);
+          log(`      - Sleeves: ${analysisData.fit_on_model.sleeve_length || 'N/A'}`);
+          log(`      - Torso: ${analysisData.fit_on_model.torso_fit || 'N/A'}`);
+          log(`      - Length: ${analysisData.fit_on_model.garment_length || 'N/A'}`);
+        }
+        log(`   🔮 Fit prediction: ${analysisData.fit_prediction || 'N/A'}`);
+        log(`   📊 Fit assessment: ${analysisData.fit_assessment || 'N/A'}`);
+        log(`   💡 Size recommendation: ${analysisData.size_recommendation || 'N/A'}`);
+        log(`   📝 Razón: ${analysisData.reasoning || 'No reasoning provided'}`);
+        log(`   ✅ Confianza: ${analysisData.confidence || 'unknown'}`);
+        
       } else {
-        // Índices basados en 1: user=1, product1=2, product2=3, product3=4
-        // garmentIndex 2 → array índice 0, garmentIndex 3 → array índice 1, etc.
-        if (garmentIndex >= 2 && garmentIndex <= 4) {
-          useImageIndex = garmentIndex - 2;
-          log(`📊 Conversión (base 1): garmentIndex ${garmentIndex} → array índice ${useImageIndex}`);
+        // FORMATO ANTERIOR (legacy)
+        log(`📊 Formato detectado: LEGACY (sin brand_fit_tendency)`);
+        
+        // Validar estructura del JSON
+        if (!analysisData.user_image || !analysisData.garment_image) {
+          throw new Error('JSON structure invalid: missing user_image or garment_image');
+        }
+        
+        const userIndex = analysisData.user_image.index;
+        const garmentIndex = analysisData.garment_image.index;
+        const isZeroBased = userIndex === 0;
+        
+        if (isZeroBased) {
+          if (garmentIndex >= 1 && garmentIndex <= 3) {
+            useImageIndex = garmentIndex - 1;
+          }
         } else {
-          warn(`⚠️ garment_image.index inválido para base 1: ${garmentIndex}, usando primera imagen`);
+          if (garmentIndex >= 2 && garmentIndex <= 4) {
+            useImageIndex = garmentIndex - 2;
+          }
+        }
+        
+        if (useImageIndex < 0 || useImageIndex >= productImagesArray.length) {
           useImageIndex = 0;
         }
+        
+        analysisData.useImageIndex = useImageIndex;
+        
+        // Adaptar formato legacy para compatibilidad con nuevo buildGenerationPrompt
+        analysisData.user_build = analysisData.user_image?.body_analysis?.build || 'average';
+        analysisData.model_found = !!analysisData.how_it_fits_on_model?.overall_silhouette;
+        
+        log(`🎯 Resultado del análisis (LEGACY):`);
+        log(`   👤 Usuario: imagen ${userIndex} - ${analysisData.user_image.description}`);
+        log(`   👕 Garment: imagen ${garmentIndex} (índice array: ${useImageIndex}) - ${analysisData.garment_image.orientation}`);
+        log(`   📏 Fit: ${analysisData.fit_style?.body_fit || 'N/A'} fit, ${analysisData.fit_style?.garment_length || 'N/A'} length`);
+        log(`   📝 Razón: ${analysisData.reasoning || 'No reasoning provided'}`);
+        log(`   ✅ Confianza: ${analysisData.confidence || 'unknown'}`);
       }
-      
-      // Validar que el índice esté dentro del rango del array
-      if (useImageIndex < 0 || useImageIndex >= productImagesArray.length) {
-        warn(`⚠️ Índice fuera de rango: ${useImageIndex}, usando primera imagen`);
-        useImageIndex = 0;
-      }
-      
-      // Agregar useImageIndex para compatibilidad
-      analysisData.useImageIndex = useImageIndex;
-      
-      log(`🎯 Resultado del análisis:`);
-      log(`   👤 Usuario: imagen ${userIndex} - ${analysisData.user_image.description}`);
-      log(`   👕 Garment: imagen ${garmentIndex} (índice array: ${useImageIndex}) - ${analysisData.garment_image.orientation}`);
-      log(`   📏 Fit: ${analysisData.fit_style?.sleeve_length || 'N/A'} sleeves, ${analysisData.fit_style?.body_fit || 'N/A'} fit, ${analysisData.fit_style?.garment_length || 'N/A'} length`);
-      log(`   🎨 Design: ${analysisData.design_details?.description?.substring(0, 100) || 'N/A'}...`);
-      log(`   📝 Razón: ${analysisData.reasoning || 'No reasoning provided'}`);
-      log(`   ✅ Confianza: ${analysisData.confidence || 'unknown'}`);
 
     } catch (parseErr) {
       warn('Error parseando respuesta de análisis, usando primera imagen:', parseErr);
       analysisData = { 
         useImageIndex: 0, 
-        user_image: { index: 1, description: 'Unknown', body_analysis: { build: 'average', height: 'average' } },
-        garment_image: { index: 2, description: 'Unknown', orientation: 'front', reason: 'Error parsing analysis' },
-        fit_style: { sleeve_length: 'regular', body_fit: 'regular', garment_length: 'regular' },
-        design_details: { description: 'Unknown', notable_features: 'Unknown' },
-        instruction: 'Replace garment with first product image',
+        user_build: 'average',
+        model_found: false,
+        front_image_index: null,
+        brand_fit_tendency: 'normal',
+        fit_on_model: null,
+        fit_prediction: null,
+        fit_assessment: null,
+        size_recommendation: null,
         reasoning: 'Error parsing analysis, using first product image',
         confidence: 'low'
       };
@@ -739,14 +704,87 @@ CRITICAL RULES:
 
 // ───────────────────────────────────────────────────────────────────────────────
 // PASO 2: Prompt para generación con Nano Banana usando datos del análisis
-// + NUEVO: Incluye ajuste de fit basado en contextura vs talle
+// NUEVO FORMATO: Basado en buildNanobananaPrompt con brand_fit_tendency
 // ───────────────────────────────────────────────────────────────────────────────
+function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'normal') {
+  const { user_build, model_found, fit_on_model, fit_prediction, fit_assessment, user_reported_size } = analysis;
+  
+  let fitDescription = '';
+  if (model_found && fit_on_model) {
+    fitDescription = ` ${fit_on_model.overall_vibe || fit_on_model.torso_fit} with ${fit_on_model.sleeve_length} sleeves, ${fit_on_model.garment_length} length`;
+    
+    if (fit_prediction?.includes('tighter')) {
+      fitDescription += ', slightly more fitted on this user';
+    } else if (fit_prediction?.includes('looser')) {
+      fitDescription += ', maintaining loose relaxed drape';
+    }
+    
+    // Subtle brand adjustment
+    if (brand_fit_tendency === 'slightly_small') {
+      fitDescription += ', brand runs slightly small so fit appears marginally tighter';
+    } else if (brand_fit_tendency === 'slightly_large') {
+      fitDescription += ', brand runs slightly large so fit appears marginally looser';
+    }
+  } else {
+    const sizeMap = {
+      'XS': 'very fitted',
+      'S': 'fitted',
+      'M': 'regular fit',
+      'L': 'relaxed loose',
+      'XL': 'oversized loose',
+      'XXL': 'very oversized baggy'
+    };
+    fitDescription = ` ${sizeMap[selectedSize] || 'regular fit'} for ${user_build} build`;
+    
+    // Subtle brand adjustment for no-model scenario
+    if (brand_fit_tendency === 'slightly_small') {
+      fitDescription += ', slightly tighter than standard';
+    } else if (brand_fit_tendency === 'slightly_large') {
+      fitDescription += ', slightly looser than standard';
+    }
+  }
+  
+  return `Virtual try-on: Dress the user with the product garment.
+
+CRITICAL: Preserve user's exact pose, face, and background completely unchanged.
+
+User: ${user_build} build (typically wears ${user_reported_size || 'unknown'})
+
+Garment: Use the FRONT view of the product (pre-identified). Match all colors, graphics, text, and design details exactly.
+
+Fit: ${fitDescription}
+
+Apply the garment to the user maintaining exact body position, facial features, background, and lighting.
+The garment should look naturally worn with realistic fabric behavior and photorealistic quality.
+
+Do not alter pose, face, or background. Do not use back/reversed views of the garment.`;
+}
+
+// Función de generación de prompt (compatible con formato anterior para fallback)
 function buildGenerationPrompt({ analysisData, size, fitAdjustment }) {
-  // Extraer datos del análisis - TODO ES DINÁMICO
+  // Detectar si el análisis viene del nuevo formato (con brand_fit_tendency)
+  const isNewFormat = analysisData.brand_fit_tendency !== undefined;
+  
+  if (isNewFormat) {
+    // Usar nuevo formato buildNanobananaPrompt
+    return buildNanobananaPrompt(
+      {
+        user_build: analysisData.user_build || 'average',
+        model_found: analysisData.model_found || false,
+        fit_on_model: analysisData.fit_on_model || null,
+        fit_prediction: analysisData.fit_prediction || null,
+        fit_assessment: analysisData.fit_assessment || null,
+        user_reported_size: analysisData.user_reported_size || size
+      },
+      size,
+      analysisData.brand_fit_tendency || 'normal'
+    );
+  }
+  
+  // FALLBACK: Formato anterior para compatibilidad
   const userImage = analysisData.user_image || { description: 'Person facing camera' };
   const garmentImage = analysisData.garment_image || { description: 'Garment view', orientation: 'front', reason: 'Selected garment' };
   
-  // Nuevo: tipo de prenda detectado dinámicamente
   const garmentType = analysisData.garment_type || { 
     category: 'garment', 
     sleeves: 'unknown', 
@@ -758,7 +796,6 @@ function buildGenerationPrompt({ analysisData, size, fitAdjustment }) {
   const colors = analysisData.colors || { primary: 'unknown', secondary: 'none' };
   const designDetails = analysisData.design_details || { description: 'Garment design', placement: 'unknown', notable_features: 'Standard features' };
   
-  // NUEVO: Cómo le queda la prenda al modelo
   const howItFits = analysisData.how_it_fits_on_model || {
     sleeve_end_point: 'unknown',
     sleeve_tightness: 'unknown',
@@ -769,14 +806,10 @@ function buildGenerationPrompt({ analysisData, size, fitAdjustment }) {
     overall_silhouette: 'unknown'
   };
   
-  // Análisis del cuerpo del usuario
   const bodyAnalysis = userImage.body_analysis || { build: 'average', height: 'average' };
-  
-  // CRÍTICO: La instrucción completa generada por OpenAI con TODOS los detalles
   const generationInstruction = analysisData.generation_instruction || analysisData.instruction || 'Replace the garment on the user with the product garment';
   const confidence = analysisData.confidence || 'medium';
 
-  // Construir descripción de mangas - CRÍTICO para sleeveless
   let sleeveDescription = '';
   const sleeves = garmentType.sleeves?.toLowerCase() || '';
   if (sleeves.includes('none') || sleeves.includes('sleeveless') || sleeves.includes('tank')) {
@@ -793,16 +826,10 @@ function buildGenerationPrompt({ analysisData, size, fitAdjustment }) {
     sleeveDescription = `Sleeves: ${garmentType.sleeves}`;
   }
 
-  // Construir descripción de cómo debe quedar (basado en el modelo)
   let fitOnBodyDescription = '';
   if (howItFits.overall_silhouette !== 'unknown') {
     fitOnBodyDescription = `
-═══════════════════════════════════════════════════════════════
 HOW THE GARMENT SHOULD FIT (COPY EXACTLY FROM MODEL):
-═══════════════════════════════════════════════════════════════
-
-The garment MUST look EXACTLY like it does on the model in the product photos:
-
 - SLEEVES END AT: ${howItFits.sleeve_end_point}
 - SLEEVE TIGHTNESS: ${howItFits.sleeve_tightness}
 - TORSO FIT: ${howItFits.torso_fit}
@@ -810,107 +837,36 @@ The garment MUST look EXACTLY like it does on the model in the product photos:
 - SHOULDER FIT: ${howItFits.shoulder_fit}
 - ARM OPENING WIDTH: ${howItFits.arm_opening_width}
 - OVERALL SILHOUETTE: ${howItFits.overall_silhouette}
-
-⚠️ CRITICAL: Replicate the EXACT same fit as shown on the model. If the garment is loose/boxy on the model, it must be loose/boxy on the user. If sleeves end at mid-bicep on the model, they must end at mid-bicep on the user.
 `;
   }
 
-  // NUEVO: Instrucción de ajuste de fit basado en contextura vs talle
   let fitAdjustmentSection = '';
   if (fitAdjustment && fitAdjustment.type !== 'normal') {
     fitAdjustmentSection = `
-═══════════════════════════════════════════════════════════════
-⚠️ CRITICAL: FIT ADJUSTMENT BASED ON USER'S BODY VS SELECTED SIZE
-═══════════════════════════════════════════════════════════════
-
-${fitAdjustment.visualInstruction}
-
-This adjustment is MANDATORY. The garment must visually reflect how size ${size} would actually look on someone with a ${bodyAnalysis.build} build.
+FIT ADJUSTMENT: ${fitAdjustment.visualInstruction}
 `;
   }
 
-  return `VIRTUAL TRY-ON TASK - DYNAMIC GARMENT DETECTION
+  return `Virtual try-on: Dress the user with the product garment.
 
-You will receive TWO images:
-1. USER IMAGE: The person to dress
-2. GARMENT IMAGE: The exact garment to put on the user
+CRITICAL: Preserve user's exact pose, face, and background completely unchanged.
 
-═══════════════════════════════════════════════════════════════
-USER BODY ANALYSIS
-═══════════════════════════════════════════════════════════════
-Height: ${bodyAnalysis.height || 'average'}
-Build: ${bodyAnalysis.build || 'average'}
-Shoulder width: ${bodyAnalysis.shoulder_width || 'average'}
-Torso length: ${bodyAnalysis.torso_length || 'average'}
-
-═══════════════════════════════════════════════════════════════
+USER BODY: ${bodyAnalysis.build || 'average'} build, ${bodyAnalysis.height || 'average'} height
 SELECTED SIZE: ${size}
-═══════════════════════════════════════════════════════════════
 ${fitAdjustmentSection}
-═══════════════════════════════════════════════════════════════
-DYNAMICALLY DETECTED GARMENT SPECIFICATIONS (DO NOT DEVIATE):
-═══════════════════════════════════════════════════════════════
-
-GARMENT TYPE: ${garmentType.category}
+GARMENT: ${garmentType.category}
 ${sleeveDescription}
 NECKLINE: ${garmentType.neckline}
-MATERIAL: ${garmentType.material_appearance}
-
-FIT:
-- Body fit: ${fitStyle.body_fit}
-- Length: ${fitStyle.garment_length}
-
-COLORS:
-- Primary: ${colors.primary}
-- Secondary: ${colors.secondary}
-
-DESIGN ELEMENTS:
-${designDetails.description}
-- Placement: ${designDetails.placement}
-- Notable features: ${designDetails.notable_features}
+FIT: ${fitStyle.body_fit}, ${fitStyle.garment_length}
+COLORS: ${colors.primary}${colors.secondary !== 'none' ? ', ' + colors.secondary : ''}
+DESIGN: ${designDetails.description}
 ${fitOnBodyDescription}
-═══════════════════════════════════════════════════════════════
-MAIN INSTRUCTION (FOLLOW EXACTLY):
-═══════════════════════════════════════════════════════════════
-
 ${generationInstruction}
 
-═══════════════════════════════════════════════════════════════
-MANDATORY RULES:
-═══════════════════════════════════════════════════════════════
+Apply the garment to the user maintaining exact body position, facial features, background, and lighting.
+The garment should look naturally worn with realistic fabric behavior and photorealistic quality.
 
-✓ USER PRESERVATION (DO NOT CHANGE):
-  - User's face, expression, features → KEEP IDENTICAL
-  - User's pose and body position → KEEP IDENTICAL
-  - User's arms and hands → KEEP IDENTICAL
-  - Background and lighting → KEEP IDENTICAL
-
-✓ GARMENT APPLICATION (CRITICAL):
-  - Apply the EXACT garment type detected: ${garmentType.category}
-  - ${sleeveDescription}
-  - Use the EXACT neckline: ${garmentType.neckline}
-  - Apply the EXACT fit: ${fitStyle.body_fit}, ${fitStyle.garment_length}
-  - Use the EXACT colors: ${colors.primary}${colors.secondary !== 'none' ? ', ' + colors.secondary : ''}
-  - MATCH the fit from the model: ${howItFits.overall_silhouette}
-
-✓ DESIGN REPLICATION (100% ACCURATE):
-  - Copy ALL graphics, logos, text EXACTLY as shown
-  - Place designs in the EXACT position: ${designDetails.placement}
-  - Preserve ALL notable features: ${designDetails.notable_features}
-
-✓ REALISM:
-  - Photorealistic quality
-  - Natural fabric drape and shadows
-  - Seamless body-garment integration
-
-⚠️ CRITICAL WARNINGS:
-- If garment is SLEEVELESS → generate with NO SLEEVES (not short sleeves, NO sleeves)
-- If garment has SHORT SLEEVES → generate with SHORT SLEEVES (not long, not sleeveless)
-- The garment type MUST match exactly what was detected
-- DO NOT add or remove features that weren't in the original garment
-${fitAdjustment && fitAdjustment.type !== 'normal' ? `- APPLY FIT ADJUSTMENT: ${fitAdjustment.description}` : ''}
-
-OUTPUT: Generate ONE photorealistic image of the user wearing the exact garment as specified above.
+Do not alter pose, face, or background.
 
 Analysis Confidence: ${confidence}`.trim();
 }
@@ -997,13 +953,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { productImage, productImages, size, userImage, userOrientation } = req.body || {};
+    const { productImage, productImages, size, userRegularSize, userImage, userOrientation } = req.body || {};
     
     log(`📥 DATOS RECIBIDOS [${requestId}]:`);
     log(`   ✅ userImage: ${userImage ? 'SÍ' : 'NO'} (${userImage ? (userImage.length / 1024).toFixed(2) + ' KB' : '0 KB'})`);
     log(`   ✅ productImages: ${Array.isArray(productImages) ? `SÍ (${productImages.length} imágenes)` : 'NO'}`);
     log(`   ✅ productImage: ${productImage ? 'SÍ' : 'NO'}`);
-    log(`   ✅ size: ${size || 'M (default)'}`);
+    log(`   ✅ size (a probar): ${size || 'M (default)'}`);
+    log(`   ✅ userRegularSize (talle habitual): ${userRegularSize || 'unknown'}`);
     log(`   ✅ userOrientation: ${userOrientation || 'null'}`);
 
     if (!userImage) return res.status(400).json({ success: false, error: 'No se recibió imagen del usuario' });
@@ -1055,10 +1012,21 @@ export default async function handler(req, res) {
     let { useImageIndex } = analysisResult;
     log(`✅ Análisis completado: Usar imagen del producto en índice ${useImageIndex}`);
 
-    // NUEVO: Extraer contextura del usuario del análisis
-    const userBuild = analysisResult.user_image?.body_analysis?.build || 'average';
+    // NUEVO: Extraer contextura del usuario del análisis (compatible con ambos formatos)
+    const userBuild = analysisResult.user_build || analysisResult.user_image?.body_analysis?.build || 'average';
+    const brandFitTendency = analysisResult.brand_fit_tendency || 'normal';
+    
     log(`👤 Contextura del usuario detectada: ${userBuild}`);
+    log(`🏷️ Brand fit tendency: ${brandFitTendency}`);
     log(`📏 Talle seleccionado: ${selectedSize}`);
+    
+    // Log adicional del nuevo formato si está disponible
+    if (analysisResult.fit_assessment) {
+      log(`📊 Fit assessment: ${analysisResult.fit_assessment}`);
+    }
+    if (analysisResult.size_recommendation) {
+      log(`💡 Size recommendation: ${analysisResult.size_recommendation}`);
+    }
 
     // NUEVO: Calcular ajuste de fit
     const fitAdjustment = calculateFitAdjustment(userBuild, selectedSize);
@@ -1093,11 +1061,15 @@ export default async function handler(req, res) {
     log('═══════════════════════════════════════════════════════════════');
     log(`📋 Request ID: ${requestId}`);
 
+    // Agregar user_reported_size al analysisResult para el prompt de Nanobanana
+    analysisResult.user_reported_size = selectedSize;
+    
     // Construir prompt usando datos del análisis de OpenAI + ajuste de fit
     const generationPrompt = buildGenerationPrompt({ 
       analysisData: analysisResult,
       size: selectedSize,
-      fitAdjustment
+      fitAdjustment,
+      brandFitTendency
     });
 
     // Construir partes para generación - SOLO 2 IMÁGENES
@@ -1468,3 +1440,4 @@ export default async function handler(req, res) {
     }
   }
 }
+

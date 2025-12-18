@@ -27,7 +27,8 @@
     buttonText: scriptTag?.dataset?.buttonText || 'Probador Virtual',
     apiUrl: 'https://ai-tn.vercel.app/api/try-on',
     // Estado interno
-    selectedSize: 'M',
+    userRegularSize: 'M',  // Talle que usa normalmente
+    selectedSize: 'M',      // Talle que quiere probar
     productImageUrl: null,
     allProductImageUrls: [],
     currentProductId: null,
@@ -838,59 +839,63 @@
     <div class="ai-modal" onclick="event.stopPropagation()">
       <button class="ai-close" id="ai-close">&times;</button>
       
-      <!-- Paso 1: Subir foto -->
+      <!-- Paso 1: Elegir talle y subir foto -->
       <div id="step-upload" class="ai-step active">
-        <h2>Sube tu foto</h2>
-        <p>Tip: Elige la pose que más te guste para ver el atuendo de la mejor manera!</p>
+        <h2 style="text-align: center; font-size: 26px; margin-bottom: 8px;">Elige tu talle regular y sube tu foto</h2>
+        <p style="text-align: center; color: #666; margin-bottom: 20px;">¿Qué talle usas regularmente?</p>
+        
+        <div class="ai-size" style="margin-bottom: 30px;">
+          <button class="ai-size-btn" data-size="XS">XS</button>
+          <button class="ai-size-btn" data-size="S">S</button>
+          <button class="ai-size-btn selected" data-size="M">M</button>
+          <button class="ai-size-btn" data-size="L">L</button>
+          <button class="ai-size-btn" data-size="XL">XL</button>
+        </div>
         
         <div class="upload-area" id="upload-area">
-          <div style="font-size: 48px; margin-bottom: 20px;">
+          <div style="font-size: 48px; margin-bottom: 20px; color: #999;">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
               <circle cx="12" cy="13" r="3"/>
             </svg>
           </div>
           <div style="font-size: 18px; font-weight: bold; color: #333; margin-bottom: 8px;">Seleccionar foto</div>
-          <div style="font-size: 14px; color: #666;">o arrastra y suelta aquí</div>
+          <div style="font-size: 14px; color: #999;">o arrastra y suelta aquí</div>
         </div>
         <input type="file" id="ai-file-input" accept="image/*" style="display:none">
       </div>
 
-      <!-- Paso 2: Confirmar y elegir talle -->
+      <!-- Paso 2: Confirmar foto y elegir talle a probar -->
       <div id="step-confirm" class="ai-step">
         <div style="display: flex; align-items: center; margin-bottom: 20px;">
           <button class="ai-back-btn" id="back-to-upload">‹</button>
-          <h2 style="margin: 0; font-size: 20px;">Tus fotos:</h2>
+          <h2 style="margin: 0; font-size: 20px;">Tu foto:</h2>
         </div>
         
-        <div style="display: flex; gap: 15px; margin-bottom: 30px;">
-          <div style="width: 80px; height: 80px; border-radius: 8px; overflow: hidden; position: relative; background: #f5f5f5;">
+        <div style="display: flex; justify-content: center; margin-bottom: 25px;">
+          <div style="width: 120px; height: 120px; border-radius: 12px; overflow: hidden; position: relative; background: #f5f5f5; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
             <img id="user-preview" style="width: 100%; height: 100%; object-fit: cover;">
-            <div id="user-preview-check" style="position: absolute; top: 5px; left: 5px; width: 20px; height: 20px; background: #4CAF50; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3">
+            <div id="user-preview-check" style="position: absolute; top: 8px; left: 8px; width: 24px; height: 24px; background: #4CAF50; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3">
                 <polyline points="20 6 9 17 4 12"></polyline>
               </svg>
             </div>
           </div>
-          <div style="width: 80px; height: 80px; border: 2px dashed #ddd; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: #fafafa;">
-            <div style="font-size: 24px; color: #999;">+</div>
-          </div>
         </div>
 
         <div style="text-align: center; margin-bottom: 20px;">
-          <p style="font-size: 16px; color: #333; margin-bottom: 15px;">Selecciona tu talle para ajustar la prenda</p>
-          <div class="ai-size">
-            <button class="ai-arrow-btn" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #999;">‹</button>
-            <button class="ai-size-btn" data-size="XS">XS</button>
-            <button class="ai-size-btn" data-size="S">S</button>
-            <button class="ai-size-btn selected" data-size="M">M</button>
-            <button class="ai-size-btn" data-size="L">L</button>
-            <button class="ai-size-btn" data-size="XL">XL</button>
-            <button class="ai-arrow-btn" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #999;">›</button>
+          <p style="font-size: 16px; color: #333; margin-bottom: 5px; font-weight: 600;">¿Qué talle querés probarte?</p>
+          <p style="font-size: 13px; color: #888; margin-bottom: 15px;">Tu talle regular: <span id="user-regular-size" style="font-weight: 600; color: #333;">M</span></p>
+          <div class="ai-size" id="try-size-selector">
+            <button class="ai-size-btn try-size" data-size="XS">XS</button>
+            <button class="ai-size-btn try-size" data-size="S">S</button>
+            <button class="ai-size-btn try-size selected" data-size="M">M</button>
+            <button class="ai-size-btn try-size" data-size="L">L</button>
+            <button class="ai-size-btn try-size" data-size="XL">XL</button>
           </div>
         </div>
 
-        <button class="ai-btn" id="generate-btn">Generar</button>
+        <button class="ai-btn ai-btn-dark" id="generate-btn">Generar prueba virtual</button>
       </div>
 
       <!-- Paso 3: Procesando -->
@@ -1009,21 +1014,133 @@
       reader.onload = function(ev) {
         userImageDataUrl = ev.target.result;
         document.getElementById('user-preview').src = userImageDataUrl;
+        
+        // Mostrar el talle regular del usuario en paso 2
+        var regularSizeSpan = document.getElementById('user-regular-size');
+        if (regularSizeSpan) {
+          regularSizeSpan.textContent = CONFIG.userRegularSize;
+        }
+        
+        // Aplicar reglas de talles permitidos
+        updateAllowedTrySizes(CONFIG.userRegularSize);
+        
+        // Pre-seleccionar el mismo talle para probar (el usuario puede cambiarlo)
+        CONFIG.selectedSize = CONFIG.userRegularSize;
+        document.querySelectorAll('#step-confirm .ai-size-btn.try-size').forEach(function(b) { 
+          b.classList.remove('selected');
+          b.style.border = '2px solid #e0e0e0';
+          b.style.background = 'white';
+          b.style.color = '#333';
+          b.style.opacity = '0.5';
+          if (b.dataset.size === CONFIG.userRegularSize && !b.disabled) {
+            b.classList.add('selected');
+            b.style.border = '2px solid #333';
+            b.style.background = '#333';
+            b.style.color = 'white';
+            b.style.opacity = '1';
+          }
+        });
+        
+        console.log('📏 Talle regular:', CONFIG.userRegularSize);
+        console.log('👕 Talle a probar (pre-seleccionado):', CONFIG.selectedSize);
+        
         showStep('step-confirm');
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // Selector de talles
-  document.querySelectorAll('.ai-size-btn').forEach(function(btn) {
+  // ============================================
+  // REGLAS DE TALLES PERMITIDOS
+  // Máximo 2 talles de diferencia
+  // ============================================
+  var ALLOWED_TRY_SIZES = {
+    'XS': ['XS', 'S', 'M'],
+    'S':  ['XS', 'S', 'M', 'L'],
+    'M':  ['S', 'M', 'L', 'XL'],
+    'L':  ['M', 'L', 'XL'],
+    'XL': ['M', 'L', 'XL']
+  };
+  
+  function updateAllowedTrySizes(regularSize) {
+    var allowed = ALLOWED_TRY_SIZES[regularSize] || ['XS', 'S', 'M', 'L', 'XL'];
+    console.log('📏 Talle regular:', regularSize, '→ Puede probar:', allowed.join(', '));
+    
+    document.querySelectorAll('#step-confirm .ai-size-btn.try-size').forEach(function(btn) {
+      var size = btn.dataset.size;
+      var isAllowed = allowed.indexOf(size) !== -1;
+      
+      if (isAllowed) {
+        btn.disabled = false;
+        btn.style.opacity = btn.classList.contains('selected') ? '1' : '0.5';
+        btn.style.cursor = 'pointer';
+        btn.style.pointerEvents = 'auto';
+      } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.2';
+        btn.style.cursor = 'not-allowed';
+        btn.style.pointerEvents = 'none';
+        btn.classList.remove('selected');
+        btn.style.border = '2px solid #e0e0e0';
+        btn.style.background = 'white';
+        btn.style.color = '#ccc';
+      }
+    });
+    
+    // Si el talle seleccionado ya no está permitido, seleccionar el regular
+    if (allowed.indexOf(CONFIG.selectedSize) === -1) {
+      CONFIG.selectedSize = regularSize;
+      document.querySelectorAll('#step-confirm .ai-size-btn.try-size').forEach(function(b) {
+        b.classList.remove('selected');
+        b.style.border = '2px solid #e0e0e0';
+        b.style.background = 'white';
+        b.style.color = '#333';
+        if (b.dataset.size === regularSize) {
+          b.classList.add('selected');
+          b.style.border = '2px solid #333';
+          b.style.background = '#333';
+          b.style.color = 'white';
+          b.style.opacity = '1';
+        }
+      });
+    }
+  }
+  
+  // Selector de talle REGULAR (paso 1)
+  document.querySelectorAll('#step-upload .ai-size-btn').forEach(function(btn) {
     btn.onclick = function(e) {
       e.preventDefault();
       e.stopPropagation();
-      document.querySelectorAll('.ai-size-btn').forEach(function(b) { b.classList.remove('selected'); });
+      document.querySelectorAll('#step-upload .ai-size-btn').forEach(function(b) { b.classList.remove('selected'); });
       btn.classList.add('selected');
+      CONFIG.userRegularSize = btn.dataset.size;
+      console.log('📏 Talle regular del usuario:', CONFIG.userRegularSize);
+    };
+  });
+  
+  // Selector de talle A PROBAR (paso 2)
+  document.querySelectorAll('#step-confirm .ai-size-btn.try-size').forEach(function(btn) {
+    btn.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (btn.disabled) return; // No hacer nada si está deshabilitado
+      
+      document.querySelectorAll('#step-confirm .ai-size-btn.try-size').forEach(function(b) { 
+        if (!b.disabled) {
+          b.classList.remove('selected');
+          b.style.border = '2px solid #e0e0e0';
+          b.style.background = 'white';
+          b.style.color = '#333';
+          b.style.opacity = '0.5';
+        }
+      });
+      btn.classList.add('selected');
+      btn.style.border = '2px solid #333';
+      btn.style.background = '#333';
+      btn.style.color = 'white';
+      btn.style.opacity = '1';
       CONFIG.selectedSize = btn.dataset.size;
-      console.log('📏 Talle seleccionado:', CONFIG.selectedSize);
+      console.log('👕 Talle a probar:', CONFIG.selectedSize);
     };
   });
 
@@ -1115,10 +1232,10 @@
     
     var messages = [
       'Analizando tu foto...',
-      'Detectando orientación...',
+      'Detectando tu contextura...',
       'Buscando imágenes del producto...',
-      'Ajustando al talle ' + CONFIG.selectedSize + '...',
-      'Generando imagen con IA...',
+      'Calculando cómo te quedará el talle ' + CONFIG.selectedSize + '...',
+      'Generando tu prueba virtual...',
       'Aplicando detalles finales...'
     ];
     var progress = 0;
@@ -1241,7 +1358,8 @@
         body: JSON.stringify({
           userImage: compressedUserImage,
           productImages: compressedProductImages,
-          size: CONFIG.selectedSize,
+          size: CONFIG.selectedSize,           // Talle que quiere probar
+          userRegularSize: CONFIG.userRegularSize, // Talle que usa normalmente
           userOrientation: CONFIG.userImageOrientation,
           apiKey: CONFIG.apiKey,
           pageUrl: window.location.href,

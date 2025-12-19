@@ -32,7 +32,10 @@
     productImageUrl: null,
     allProductImageUrls: [],
     currentProductId: null,
-    userImageOrientation: 'unknown'
+    userImageOrientation: 'unknown',
+    // Info del producto
+    productTitle: null,
+    productDescription: null
   };
 
   console.log('═══════════════════════════════════════════════════════════════');
@@ -457,6 +460,103 @@
     console.log('═══════════════════════════════════════════════════════════════');
     
     return urls.slice(0, 4); // Máximo 4 imágenes
+  }
+
+  // ==========================================
+  // FUNCIÓN PARA EXTRAER INFO DEL PRODUCTO
+  // ==========================================
+  function getProductInfo() {
+    console.log('📝 Extrayendo información del producto...');
+    
+    var title = null;
+    var description = null;
+    
+    // === DETECTAR TÍTULO ===
+    // Selectores comunes para título de producto en e-commerce
+    var titleSelectors = [
+      // Tiendanube
+      'h1.js-product-name',
+      'h1[data-store="product-name"]',
+      '.product-name h1',
+      // Genéricos
+      'h1.product-title',
+      'h1.product_title',
+      '.product-title h1',
+      '.product h1',
+      '[itemprop="name"]',
+      'h1[class*="product"]',
+      // WooCommerce
+      '.woocommerce-product-details__short-description h1',
+      '.entry-title',
+      // Shopify
+      '.product__title',
+      '.product-single__title',
+      // Fallback
+      'h1'
+    ];
+    
+    for (var i = 0; i < titleSelectors.length; i++) {
+      var el = document.querySelector(titleSelectors[i]);
+      if (el && el.textContent.trim()) {
+        title = el.textContent.trim();
+        console.log('   ✅ Título encontrado (' + titleSelectors[i] + '):', title);
+        break;
+      }
+    }
+    
+    // === DETECTAR DESCRIPCIÓN ===
+    var descSelectors = [
+      // Tiendanube
+      '.js-product-description',
+      '[data-store="product-description"]',
+      '.product-description',
+      '.product-description-content',
+      // Genéricos
+      '[itemprop="description"]',
+      '.description',
+      '.product-short-description',
+      // WooCommerce
+      '.woocommerce-product-details__short-description',
+      '.woocommerce-Tabs-panel--description',
+      // Shopify
+      '.product__description',
+      '.product-single__description',
+      // Meta description como fallback
+      'meta[name="description"]'
+    ];
+    
+    for (var j = 0; j < descSelectors.length; j++) {
+      var descEl = document.querySelector(descSelectors[j]);
+      if (descEl) {
+        // Si es meta tag, usar content attribute
+        if (descEl.tagName === 'META') {
+          description = descEl.getAttribute('content');
+        } else {
+          description = descEl.textContent.trim();
+        }
+        
+        if (description && description.length > 10) {
+          // Limitar a 500 caracteres
+          if (description.length > 500) {
+            description = description.substring(0, 500) + '...';
+          }
+          console.log('   ✅ Descripción encontrada (' + descSelectors[j] + '):', description.substring(0, 100) + '...');
+          break;
+        }
+      }
+    }
+    
+    // Guardar en CONFIG
+    CONFIG.productTitle = title;
+    CONFIG.productDescription = description;
+    
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('📦 INFO DEL PRODUCTO:');
+    console.log('   Título:', title || '(no detectado)');
+    console.log('   Descripción:', description ? description.substring(0, 100) + '...' : '(no detectada)');
+    console.log('═══════════════════════════════════════════════════════════════');
+    
+    return { title: title, description: description };
   }
 
   // ============================================
@@ -1279,6 +1379,9 @@
         throw new Error('No se encontraron imágenes del producto. Verificá el selector: ' + CONFIG.imageSelector);
       }
       
+      // PASO 2.5: Obtener info del producto (título y descripción)
+      var productInfo = getProductInfo();
+      
       // PASO 3: Convertir a base64 con cache busting
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('🔄 PASO 3: Convirtiendo ' + productImageUrls.length + ' imágenes a JPEG/base64...');
@@ -1363,7 +1466,10 @@
           userOrientation: CONFIG.userImageOrientation,
           apiKey: CONFIG.apiKey,
           pageUrl: window.location.href,
-          requestId: requestId
+          requestId: requestId,
+          // Info del producto
+          productTitle: CONFIG.productTitle,
+          productDescription: CONFIG.productDescription
         })
       });
 
@@ -1386,14 +1492,6 @@
       updateProgress(100);
 
       if(result.success && result.generatedImage) {
-        // 🚨 VALIDACIÓN: Verificar que la imagen tenga un tamaño mínimo razonable
-        var MIN_IMAGE_LENGTH = 1000;
-        if (result.generatedImage.length < MIN_IMAGE_LENGTH) {
-          console.error('❌ ERROR: Imagen generada muy corta (' + result.generatedImage.length + ' chars)');
-          console.error('❌ Contenido:', result.generatedImage);
-          throw new Error('El servidor no pudo generar la imagen correctamente. Intenta de nuevo.');
-        }
-        
         var cleanedImage = cleanBase64Prefix(result.generatedImage);
         document.getElementById('result-image').src = cleanedImage;
         setTimeout(function() { showStep('step-result'); }, 500);

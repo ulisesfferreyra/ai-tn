@@ -385,7 +385,7 @@ function ensureCors(req, res) {
 // ───────────────────────────────────────────────────────────────────────────────
 // PASO 1: Análisis previo con OpenAI Vision para determinar qué imagen usar
 // ───────────────────────────────────────────────────────────────────────────────
-async function analyzeProductImages(userImageBase64, productImagesArray, userReportedSize, selectedSize) {
+async function analyzeProductImages(userImageBase64, productImagesArray, userReportedSize, selectedSize, productTitle = null, productDescription = null) {
   // Logs visibles en Vercel
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('🔍 INICIANDO ANÁLISIS CON OPENAI VISION');
@@ -393,6 +393,7 @@ async function analyzeProductImages(userImageBase64, productImagesArray, userRep
   console.log(`📸 Imágenes recibidas: 1 usuario + ${productImagesArray?.length || 0} producto`);
   console.log(`📏 Tamaño imagen usuario: ${userImageBase64 ? (userImageBase64.length / 1024).toFixed(2) + ' KB' : 'N/A'}`);
   console.log(`📏 Talle regular usuario: ${userReportedSize}, Talle a probar: ${selectedSize}`);
+  console.log(`📝 Producto: ${productTitle || '(sin título)'}`);
   
   log('═══════════════════════════════════════════════════════════════');
   log('🔍 INICIANDO ANÁLISIS CON OPENAI VISION');
@@ -400,6 +401,7 @@ async function analyzeProductImages(userImageBase64, productImagesArray, userRep
   log(`📸 Imágenes recibidas: 1 usuario + ${productImagesArray?.length || 0} producto`);
   log(`📏 Tamaño imagen usuario: ${userImageBase64 ? (userImageBase64.length / 1024).toFixed(2) + ' KB' : 'N/A'}`);
   log(`📏 Talle regular usuario: ${userReportedSize}, Talle a probar: ${selectedSize}`);
+  log(`📝 Producto: ${productTitle || '(sin título)'}`);
   
   if (!productImagesArray || productImagesArray.length === 0) {
     warn('⚠️ No se recibieron imágenes del producto para análisis');
@@ -418,10 +420,21 @@ async function analyzeProductImages(userImageBase64, productImagesArray, userRep
 
   const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
   
+  // Construir contexto del producto si está disponible
+  let productContext = '';
+  if (productTitle || productDescription) {
+    productContext = `
+PRODUCT INFO (from e-commerce page):
+• Product name: ${productTitle || 'Not provided'}
+• Description: ${productDescription || 'Not provided'}
+Use this information to better understand the garment type, style, and expected fit.
+`;
+  }
+
   const analysisPrompt = `You are analyzing product images to identify orientation and fit.
 
 You will receive multiple images: ONE showing a USER and OTHERS showing a GARMENT.
-
+${productContext}
 USER CONTEXT (provided by system):
 • User's typical size: ${userReportedSize}
 
@@ -704,7 +717,7 @@ CRITICAL:
 // PASO 2: Prompt para generación con Nano Banana usando datos del análisis
 // NUEVO FORMATO: Basado en buildNanobananaPrompt con brand_fit_tendency
 // ───────────────────────────────────────────────────────────────────────────────
-function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'normal') {
+function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'normal', productTitle = null) {
   const { user_build, model_found, fit_on_model, fit_prediction, fit_assessment, user_reported_size } = analysis;
   
   let fitDescription = '';
@@ -750,13 +763,16 @@ function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'nor
     sizeExplicit += 'Medium = standard fit.';
   }
   
-  return `Virtual try-on: Dress the user with the product garment.
+  // Agregar nombre del producto si está disponible
+  const productInfo = productTitle ? `"${productTitle}"` : 'the product garment';
+  
+  return `Virtual try-on: Dress the user with ${productInfo}.
 
 CRITICAL: Preserve user's exact pose, face, and background completely unchanged.
 
 User: ${user_build} build (typically wears ${user_reported_size || 'unknown'})
 
-Garment: Use the FRONT view of the product (pre-identified). Match all colors, graphics, text, and design details exactly.
+Garment${productTitle ? ` (${productTitle})` : ''}: Use the FRONT view of the product (pre-identified). Match all colors, graphics, text, and design details exactly.
 
 ${sizeExplicit}
 
@@ -786,7 +802,7 @@ MANDATORY:
 }
 
 // Función de generación de prompt (compatible con formato anterior para fallback)
-function buildGenerationPrompt({ analysisData, size, fitAdjustment }) {
+function buildGenerationPrompt({ analysisData, size, fitAdjustment, productTitle = null }) {
   // Detectar si el análisis viene del nuevo formato (con brand_fit_tendency)
   const isNewFormat = analysisData.brand_fit_tendency !== undefined;
   
@@ -802,7 +818,8 @@ function buildGenerationPrompt({ analysisData, size, fitAdjustment }) {
         user_reported_size: analysisData.user_reported_size || size
       },
       size,
-      analysisData.brand_fit_tendency || 'normal'
+      analysisData.brand_fit_tendency || 'normal',
+      productTitle // Pasar título del producto
     );
   }
   
@@ -978,12 +995,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { productImage, productImages, size, userRegularSize, userImage, userOrientation } = req.body || {};
+    const { productImage, productImages, size, userRegularSize, userImage, userOrientation, productTitle, productDescription } = req.body || {};
     
     log(`📥 DATOS RECIBIDOS [${requestId}]:`);
     log(`   ✅ userImage: ${userImage ? 'SÍ' : 'NO'} (${userImage ? (userImage.length / 1024).toFixed(2) + ' KB' : '0 KB'})`);
     log(`   ✅ productImages: ${Array.isArray(productImages) ? `SÍ (${productImages.length} imágenes)` : 'NO'}`);
     log(`   ✅ productImage: ${productImage ? 'SÍ' : 'NO'}`);
+    log(`   📝 productTitle: ${productTitle || '(no proporcionado)'}`);
+    log(`   📝 productDescription: ${productDescription ? productDescription.substring(0, 50) + '...' : '(no proporcionado)'}`);
     log(`   ✅ size (a probar): ${size || 'M (default)'}`);
     log(`   ✅ userRegularSize (talle habitual): ${userRegularSize || 'unknown'}`);
     log(`   ✅ userOrientation: ${userOrientation || 'null'}`);
@@ -1033,7 +1052,9 @@ export default async function handler(req, res) {
       processedUserImage.toString('base64'),
       productImagesArray,
       userRegularSize || size || 'unknown', // Talle habitual del usuario
-      selectedSize // Talle que quiere probar
+      selectedSize, // Talle que quiere probar
+      productTitle, // Título del producto
+      productDescription // Descripción del producto
     );
     
     let { useImageIndex } = analysisResult;
@@ -1096,7 +1117,8 @@ export default async function handler(req, res) {
       analysisData: analysisResult,
       size: selectedSize,
       fitAdjustment,
-      brandFitTendency
+      brandFitTendency,
+      productTitle // Pasar título del producto
     });
 
     // Construir partes para generación - SOLO 2 IMÁGENES

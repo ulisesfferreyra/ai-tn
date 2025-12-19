@@ -737,6 +737,115 @@ CRITICAL:
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
+// PASO 1.5: Validación post-generación con OpenAI Vision
+// Verifica que la imagen generada sea correcta antes de mostrarla al usuario
+// ───────────────────────────────────────────────────────────────────────────────
+async function validateGeneratedImage(generatedImageBase64, originalAnalysis, productImageBase64) {
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log('🔍 VALIDANDO IMAGEN GENERADA CON OPENAI VISION');
+  console.log('═══════════════════════════════════════════════════════════════');
+  
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  if (!OPENAI_API_KEY) {
+    console.warn('⚠️ OPENAI_API_KEY no configurada, saltando validación');
+    return { valid: true, reason: 'Validation skipped - no API key' };
+  }
+
+  const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+  
+  const targetGarment = originalAnalysis.target_garment || {};
+  const expectedType = targetGarment.type || 'garment';
+  const expectedBodyPos = targetGarment.body_position || 'unknown';
+  const expectedLength = targetGarment.garment_length || 'unknown';
+  
+  const validationPrompt = `You are validating a virtual try-on result.
+
+EXPECTED RESULT:
+- Garment type: ${expectedType}
+- Body position: ${expectedBodyPos} (upper = torso, lower = legs/waist)
+- Garment length: ${expectedLength} (short = above knee, long = below knee)
+- Description: ${targetGarment.description || 'N/A'}
+
+TASK: Compare the GENERATED IMAGE (image 1) with the PRODUCT IMAGE (image 2).
+
+CHECK:
+1. Is the person in the generated image wearing a garment that matches the PRODUCT?
+2. Is the garment in the correct body position (${expectedBodyPos})?
+3. Is the garment the correct length (${expectedLength})?
+4. Do the colors and patterns match the product?
+5. Is the face still visible and natural-looking?
+
+RETURN ONLY VALID JSON:
+{
+  "valid": true/false,
+  "garment_detected": true/false,
+  "correct_body_position": true/false,
+  "correct_length": true/false,
+  "colors_match": true/false,
+  "face_preserved": true/false,
+  "reason": "<brief explanation of what's wrong if invalid>"
+}
+
+Be strict but fair. If the garment is clearly visible and matches the product type, position, and length, return valid=true.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: validationPrompt },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${generatedImageBase64}`,
+                detail: 'low'
+              }
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${productImageBase64}`,
+                detail: 'low'
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 500,
+      temperature: 0.1,
+      response_format: { type: 'json_object' }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    console.log('📋 Respuesta de validación:', content);
+    
+    const result = JSON.parse(content);
+    
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log(`${result.valid ? '✅' : '❌'} VALIDACIÓN: ${result.valid ? 'PASÓ' : 'FALLÓ'}`);
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('   📋 Garment detected:', result.garment_detected);
+    console.log('   📍 Correct body position:', result.correct_body_position);
+    console.log('   📏 Correct length:', result.correct_length);
+    console.log('   🎨 Colors match:', result.colors_match);
+    console.log('   👤 Face preserved:', result.face_preserved);
+    if (!result.valid) {
+      console.log('   ❌ Reason:', result.reason);
+    }
+    console.log('═══════════════════════════════════════════════════════════════');
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Error en validación:', error.message);
+    // En caso de error, permitimos que pase para no bloquear al usuario
+    return { valid: true, reason: 'Validation error - allowing through', error: error.message };
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
 // PASO 2: Prompt para generación con Nano Banana usando datos del análisis
 // NUEVO FORMATO: Basado en buildNanobananaPrompt con brand_fit_tendency
 // ───────────────────────────────────────────────────────────────────────────────
@@ -811,49 +920,49 @@ function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'nor
     const positionInfo = bodyPosDesc[bodyPos] || target_garment.type;
     const lengthInfo = lengthDesc[garmentLen] || '';
     
-    targetGarmentLine = `TARGET GARMENT: ${target_garment.type} on ${positionInfo}.
+    // Instrucción positiva según body_position
+    let actionInstruction = '';
+    if (bodyPos === 'lower') {
+      actionInstruction = 'ACTION: Remove/replace whatever the user is wearing on their LOWER BODY (pants, shorts, skirt) and PUT ON the product garment (the swimsuit/shorts from the product image).';
+    } else if (bodyPos === 'upper') {
+      actionInstruction = 'ACTION: Remove/replace whatever the user is wearing on their UPPER BODY (shirt, top, jacket) and PUT ON the product garment from the product image.';
+    } else {
+      actionInstruction = 'ACTION: Replace the user\'s outfit with the product garment from the product image.';
+    }
+    
+    targetGarmentLine = `TARGET GARMENT: ${target_garment.type}
+BODY AREA: ${positionInfo}
 LENGTH: ${lengthInfo}
-CRITICAL: Match the EXACT length shown in the product image. If product shows shorts (above knee), output MUST show shorts (above knee), NOT pants.
-ONLY replace this specific item. If user wears other clothing items in different body areas, KEEP THEM UNCHANGED.`;
+${actionInstruction}
+CRITICAL: You MUST change the user's clothing. Output cannot be identical to input. Match the EXACT garment from the product image.`;
   }
   
-  return `Virtual try-on: Dress the user with ${productInfo}.
-
-CRITICAL: Preserve user's exact pose, face, and background completely unchanged.
-
-User: ${user_build} build (typically wears ${user_reported_size || 'unknown'})
+  return `VIRTUAL TRY-ON TASK: Put the product garment on the user.
 
 ${targetGarmentLine}
 
-Garment${productTitle ? ` (${productTitle})` : ''}: Use the FRONT view of the product (pre-identified). Match all colors, graphics, text, and design details exactly.
+USER INFO:
+- Body type: ${user_build} build
+- Usual size: ${user_reported_size || 'unknown'}
 
-${sizeExplicit}
+PRODUCT INFO:
+- Name: ${productInfo}
+- ${sizeExplicit}
+- Fit: ${fitDescription}
 
-Size scale: ${sizeScale}
+WHAT YOU MUST DO:
+1. Take the garment from the product image
+2. Put it on the user's body in the correct position
+3. The output MUST show the user wearing the new garment
+4. Match all colors, patterns, graphics, and text from the product exactly
 
-Fit: ${fitDescription}
+WHAT TO PRESERVE:
+- User's face (100% identical)
+- User's pose and body position
+- Background (100% identical)
+- Lighting
 
-Apply the garment to the user maintaining exact body position, facial features, background, and lighting.
-The garment should look naturally worn with realistic fabric behavior and photorealistic quality.
-
-Do not alter pose, face, or background. Do not use back/reversed views of the garment.
-
-STRICTLY PROHIBITED:
-• Do NOT add any other person to the image
-• Do NOT change the user's face, hair, or facial expression
-• Do NOT change the user's pose, arm position, or body angle
-• Do NOT change or replace the background
-• Do NOT change the garment's color, pattern, graphics, or text
-• Do NOT change the garment's style (collar type, sleeve type, neckline)
-• Do NOT add accessories, logos, or elements not in the original garment
-• Do NOT mirror or flip the garment design
-• Do NOT change lighting or color temperature
-
-MANDATORY:
-• Output must contain ONLY the original user wearing the original garment
-• User's face must be 100% identical to input
-• Background must be 100% identical to input
-• Garment design must be 100% identical to product image`;
+IMPORTANT: The output image MUST be different from the input. You MUST change the user's clothing to show them wearing the product garment.`;
 }
 
 // Función de generación de prompt (compatible con formato anterior para fallback)
@@ -1233,110 +1342,135 @@ export default async function handler(req, res) {
       }
     });
 
-    // Llamada a Nano Banana para generación
-    let result, response;
-    try {
-      log(`📤 Enviando solicitud a Nano Banana (${GENERATION_MODEL}) para generación...`);
-      log(`📋 Request ID: ${requestId}`);
-      const requestStartTime = Date.now();
-
-      // Formato según nueva documentación: contents con array de parts
-      result = await generationModel.generateContent({ 
-        contents: [{ 
-          role: 'user', 
-          parts: parts 
-        }] 
-      });
-
-      response = await result.response;
-      const requestDuration = Date.now() - requestStartTime;
-      log(`✅ Respuesta recibida de Nano Banana en ${requestDuration}ms`);
-      log(`📋 Request ID: ${requestId}`);
-
-      if (!response) throw new Error('Sin respuesta de Gemini');
-
-      // Log básico de la estructura de la respuesta
-      log('Response structure:', {
-        hasCandidates: !!response.candidates,
-        candidatesCount: response.candidates?.length || 0,
-        firstCandidateHasContent: !!response.candidates?.[0]?.content,
-        firstCandidatePartsCount: response.candidates?.[0]?.content?.parts?.length || 0
-      });
-
-      // Verificar si hay bloqueos de seguridad o errores
-      if (response.candidates?.[0]?.finishReason) {
-        const finishReason = response.candidates[0].finishReason;
-        log(`Finish reason: ${finishReason}`);
-        
-        if (finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS') {
-          warn(`⚠️ Finish reason inesperado: ${finishReason}`);
-          if (finishReason === 'SAFETY') {
-            throw new Error('Contenido bloqueado por filtros de seguridad de Google AI');
-          }
-          if (finishReason === 'RECITATION') {
-            throw new Error('Contenido bloqueado por políticas de recitación de Google AI');
-          }
-        }
-      }
-
-      // Verificar si hay bloqueos de seguridad en otros lugares
-      if (response.promptFeedback) {
-        log('Prompt feedback:', response.promptFeedback);
-        if (response.promptFeedback.blockReason) {
-          warn(`⚠️ Prompt bloqueado: ${response.promptFeedback.blockReason}`);
-          throw new Error(`Prompt bloqueado por Google AI: ${response.promptFeedback.blockReason}`);
-        }
-      }
-    } catch (aiError) {
-      // Clasificación de errores
-      const msg = aiError?.message || '';
-      if (msg.includes('SAFETY')) throw new Error('Contenido bloqueado por filtros de seguridad de Google AI');
-      if (msg.includes('QUOTA')) throw new Error('Límite de cuota de Google AI excedido. Intenta más tarde.');
-      if (msg.toLowerCase().includes('timeout')) throw new Error('La solicitud a Google AI tardó demasiado tiempo. Intenta con menos imágenes.');
-      throw aiError;
-    }
-
-    // Extraer imagen generada
-    const imageBase64 = safePickGeneratedImage(response);
+    // ───────────────────────────────────────────────────────────────────────────────
+    // GENERACIÓN CON VALIDACIÓN Y REINTENTO AUTOMÁTICO
+    // Máximo 3 intentos (1 original + 2 reintentos si falla validación)
+    // ───────────────────────────────────────────────────────────────────────────────
+    const MAX_GENERATION_ATTEMPTS = 3;
+    let imageBase64 = null;
+    let lastValidationResult = null;
     
-    if (!imageBase64 || typeof imageBase64 !== 'string' || imageBase64.length < 100) {
-      // Log detallado de la respuesta para diagnóstico
-      log('⚠️ No se pudo extraer imagen de la respuesta de Google AI');
-      log('Response structure:', {
-        hasResponse: !!response,
-        hasCandidates: !!response?.candidates,
-        candidatesLength: response?.candidates?.length || 0,
-        firstCandidate: response?.candidates?.[0] ? {
-          hasContent: !!response.candidates[0].content,
-          hasParts: !!response.candidates[0].content?.parts,
-          partsLength: response.candidates[0].content?.parts?.length || 0,
-          partsTypes: response.candidates[0].content?.parts?.map(p => ({
-            hasInlineData: !!p?.inlineData,
-            hasInline_data: !!p?.inline_data,
-            hasText: !!p?.text,
-            textPreview: p?.text ? p.text.substring(0, 100) : null
-          })) || []
-        } : null,
-        hasOutput: !!response?.output,
-        outputLength: response?.output?.length || 0
-      });
-
-      // Si hay texto en la respuesta, loguearlo
-      if (response?.candidates?.[0]?.content?.parts) {
-        const textParts = response.candidates[0].content.parts.filter(p => p?.text);
-        if (textParts.length > 0) {
-          log('⚠️ La IA retornó texto en lugar de imagen:');
-          textParts.forEach((part, idx) => {
-            log(`   Texto [${idx}]:`, part.text);
-          });
-        }
-      }
-
-      if (IS_DEV) {
-        log('Respuesta cruda completa:', JSON.stringify(response, null, 2));
-      }
+    for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
+      log(`═══════════════════════════════════════════════════════════════`);
+      log(`🔄 INTENTO DE GENERACIÓN ${attempt}/${MAX_GENERATION_ATTEMPTS}`);
+      log(`═══════════════════════════════════════════════════════════════`);
       
-      throw new Error('No se pudo extraer la imagen generada (imageData vacío o inválido). La IA puede haber retornado texto en lugar de una imagen.');
+      // Llamada a Nano Banana para generación
+      let result, response;
+      try {
+        log(`📤 Enviando solicitud a Nano Banana (${GENERATION_MODEL}) para generación...`);
+        log(`📋 Request ID: ${requestId}`);
+        const requestStartTime = Date.now();
+
+        // Formato según nueva documentación: contents con array de parts
+        result = await generationModel.generateContent({ 
+          contents: [{ 
+            role: 'user', 
+            parts: parts 
+          }] 
+        });
+
+        response = await result.response;
+        const requestDuration = Date.now() - requestStartTime;
+        log(`✅ Respuesta recibida de Nano Banana en ${requestDuration}ms`);
+        log(`📋 Request ID: ${requestId}`);
+
+        if (!response) throw new Error('Sin respuesta de Gemini');
+
+        // Log básico de la estructura de la respuesta
+        log('Response structure:', {
+          hasCandidates: !!response.candidates,
+          candidatesCount: response.candidates?.length || 0,
+          firstCandidateHasContent: !!response.candidates?.[0]?.content,
+          firstCandidatePartsCount: response.candidates?.[0]?.content?.parts?.length || 0
+        });
+
+        // Verificar si hay bloqueos de seguridad o errores
+        if (response.candidates?.[0]?.finishReason) {
+          const finishReason = response.candidates[0].finishReason;
+          log(`Finish reason: ${finishReason}`);
+          
+          if (finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS') {
+            warn(`⚠️ Finish reason inesperado: ${finishReason}`);
+            if (finishReason === 'SAFETY') {
+              throw new Error('Contenido bloqueado por filtros de seguridad de Google AI');
+            }
+            if (finishReason === 'RECITATION') {
+              throw new Error('Contenido bloqueado por políticas de recitación de Google AI');
+            }
+          }
+        }
+
+        // Verificar si hay bloqueos de seguridad en otros lugares
+        if (response.promptFeedback) {
+          log('Prompt feedback:', response.promptFeedback);
+          if (response.promptFeedback.blockReason) {
+            warn(`⚠️ Prompt bloqueado: ${response.promptFeedback.blockReason}`);
+            throw new Error(`Prompt bloqueado por Google AI: ${response.promptFeedback.blockReason}`);
+          }
+        }
+        
+        // Extraer imagen generada
+        const currentImageBase64 = safePickGeneratedImage(response);
+        
+        if (!currentImageBase64 || typeof currentImageBase64 !== 'string' || currentImageBase64.length < 100) {
+          throw new Error('No se pudo extraer imagen válida de la respuesta');
+        }
+        
+        imageBase64 = currentImageBase64;
+        
+        // ───────────────────────────────────────────────────────────────────────────────
+        // VALIDACIÓN POST-GENERACIÓN
+        // ───────────────────────────────────────────────────────────────────────────────
+        log(`🔍 Validando imagen generada (intento ${attempt})...`);
+        
+        // Obtener imagen del producto para comparación (usar la imagen seleccionada)
+        const productImageForValidation = selectedProductImage.replace(/^data:image\/\w+;base64,/, '');
+        
+        const validationResult = await validateGeneratedImage(
+          imageBase64,
+          analysisResult,
+          productImageForValidation
+        );
+        
+        lastValidationResult = validationResult;
+        
+        if (validationResult.valid) {
+          log(`✅ Validación PASÓ en intento ${attempt}`);
+          break; // Salir del loop, imagen válida
+        } else {
+          warn(`❌ Validación FALLÓ en intento ${attempt}: ${validationResult.reason}`);
+          if (attempt < MAX_GENERATION_ATTEMPTS) {
+            log(`🔄 Reintentando generación...`);
+          } else {
+            log(`⚠️ Se agotaron los intentos. Usando última imagen generada.`);
+          }
+        }
+        
+      } catch (aiError) {
+        // Clasificación de errores
+        const msg = aiError?.message || '';
+        if (msg.includes('SAFETY')) throw new Error('Contenido bloqueado por filtros de seguridad de Google AI');
+        if (msg.includes('QUOTA')) throw new Error('Límite de cuota de Google AI excedido. Intenta más tarde.');
+        if (msg.toLowerCase().includes('timeout')) throw new Error('La solicitud a Google AI tardó demasiado tiempo. Intenta con menos imágenes.');
+        
+        // Si es el último intento, propagar el error
+        if (attempt === MAX_GENERATION_ATTEMPTS) {
+          throw aiError;
+        }
+        warn(`⚠️ Error en intento ${attempt}: ${msg}. Reintentando...`);
+      }
+    }
+    
+    // Verificar que tengamos una imagen
+    if (!imageBase64) {
+      throw new Error('No se pudo generar ninguna imagen válida después de todos los intentos');
+    }
+    
+    // Log de resultado de validación
+    if (lastValidationResult && !lastValidationResult.valid) {
+      log(`⚠️ NOTA: La imagen final no pasó validación pero se entrega igual`);
+      log(`   Razón: ${lastValidationResult.reason}`);
     }
 
     const totalDuration = Date.now() - startTime;

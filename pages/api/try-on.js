@@ -436,7 +436,7 @@ Use this information to better understand the garment type, style, and expected 
 You will receive multiple images: ONE showing a USER and OTHERS showing a GARMENT.
 ${productContext}
 USER CONTEXT (provided by system):
-• User's typical size: ${userReportedSize}
+• User's typical size: ${userReportedSize || 'unknown'}
 
 TASKS:
 
@@ -444,32 +444,38 @@ TASKS:
    - Find the user photo
    - Analyze user build: slim / average / athletic / broad / plus-size
 
-2. FIND HUMAN MODEL IN PRODUCT IMAGES (CRITICAL)
+2. IDENTIFY TARGET GARMENT (CRITICAL)
+   - Find product images showing the garment ALONE (no model wearing it)
+   - This isolated garment = the product being sold = what to replace on user
+   - If model wears multiple items, ONLY the isolated garment matters
+   - Return: garment_type (e.g., "swimsuit", "t-shirt", "pants", "dress")
+
+3. FIND HUMAN MODEL IN PRODUCT IMAGES (CRITICAL)
    - Scan ALL product images for a person wearing the garment
    - IF found:
      * What's visible on the model's CHEST when facing camera? → That's FRONT
      * Return that image index
      * Describe how it fits the model
 
-3. MEASURE FIT ON MODEL (if present)
+4. MEASURE FIT ON MODEL (if present)
    - Sleeve length: short / regular / long / oversized
    - Torso fit: tight / fitted / regular / loose / oversized / boxy
    - Garment length: cropped / regular / long / oversized
    - Overall vibe: e.g., "streetwear oversized"
 
-4. DETERMINE BRAND FIT TENDENCY (NEW - ANALYZE FROM PHOTOS)
+5. DETERMINE BRAND FIT TENDENCY (NEW - ANALYZE FROM PHOTOS)
    - Based on how the garment fits the model in the photos, determine:
      * slightly_small: garment appears fitted/tight on model, brand likely runs small
      * normal: garment fits as expected for its labeled style
      * slightly_large: garment appears loose/oversized on model, brand likely runs large
    - This is YOUR assessment based on visual analysis, not a system input
 
-5. COMPARE USER VS MODEL
+6. COMPARE USER VS MODEL
    - Is user broader/slimmer/similar to model?
    - How will this affect fit?
 
-6. SIZE FIT ASSESSMENT
-   - Compare user_typical_size vs selected_size: ${selectedSize}
+7. SIZE FIT ASSESSMENT
+   - Compare user_typical_size vs selected_size: ${selectedSize || 'M'}
    - Factor in brand_fit_tendency you determined (subtle adjustment only)
    - Generate fit_assessment: how will this specific size feel on this user?
    - Generate size_recommendation: suggest better size only if clearly needed
@@ -478,6 +484,11 @@ RETURN ONLY VALID JSON (no markdown, no code blocks):
 {
   "user_image_index": <number>,
   "user_build": "<slim/average/athletic/broad/plus-size>",
+  "target_garment": {
+    "type": "<swimsuit/t-shirt/pants/dress/shorts/jacket/etc>",
+    "identified_from_index": <number or null>,
+    "description": "<brief description of the isolated garment>"
+  },
   "model_found": <true/false>,
   "front_image_index": <number or null>,
   "model_build": "<slim/average/athletic/broad or null>",
@@ -499,7 +510,8 @@ RETURN ONLY VALID JSON (no markdown, no code blocks):
 CRITICAL: 
 • Model reference is ALWAYS priority. Describe ACTUAL fit, not assumed fit.
 • If no model found: set model_found=false, all model-related fields to null, and brand_fit_tendency to "normal"
-• brand_fit_tendency must be determined by YOU based on photo analysis`;
+• brand_fit_tendency must be determined by YOU based on photo analysis
+• target_garment.type must be identified from ISOLATED product images (garment alone, not on model)`;
 
   try {
     // Construir mensajes para OpenAI
@@ -718,7 +730,7 @@ CRITICAL:
 // NUEVO FORMATO: Basado en buildNanobananaPrompt con brand_fit_tendency
 // ───────────────────────────────────────────────────────────────────────────────
 function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'normal', productTitle = null) {
-  const { user_build, model_found, fit_on_model, fit_prediction, fit_assessment, user_reported_size } = analysis;
+  const { user_build, model_found, fit_on_model, fit_prediction, fit_assessment, user_reported_size, target_garment } = analysis;
   
   let fitDescription = '';
   if (model_found && fit_on_model) {
@@ -766,11 +778,18 @@ function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'nor
   // Agregar nombre del producto si está disponible
   const productInfo = productTitle ? `"${productTitle}"` : 'the product garment';
   
+  // Línea para identificar el target garment específico
+  const targetGarmentLine = target_garment?.type 
+    ? `TARGET GARMENT: ${target_garment.type} - ONLY replace this specific item. If model wears other clothing items, IGNORE them.`
+    : '';
+  
   return `Virtual try-on: Dress the user with ${productInfo}.
 
 CRITICAL: Preserve user's exact pose, face, and background completely unchanged.
 
 User: ${user_build} build (typically wears ${user_reported_size || 'unknown'})
+
+${targetGarmentLine}
 
 Garment${productTitle ? ` (${productTitle})` : ''}: Use the FRONT view of the product (pre-identified). Match all colors, graphics, text, and design details exactly.
 
@@ -782,6 +801,8 @@ Fit: ${fitDescription}
 
 Apply the garment to the user maintaining exact body position, facial features, background, and lighting.
 The garment should look naturally worn with realistic fabric behavior and photorealistic quality.
+
+Do not alter pose, face, or background. Do not use back/reversed views of the garment.
 
 STRICTLY PROHIBITED:
 • Do NOT add any other person to the image

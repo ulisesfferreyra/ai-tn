@@ -449,6 +449,10 @@ TASKS:
    - This isolated garment = the product being sold = what to replace on user
    - If model wears multiple items, ONLY the isolated garment matters
    - Return: garment_type (e.g., "swimsuit", "t-shirt", "pants", "dress")
+   - Return: body_position - WHERE on the body this garment goes:
+     * "upper" = covers torso (t-shirts, shirts, jackets, tank tops, sweaters)
+     * "lower" = covers legs (pants, shorts, skirts, swimsuits/trunks)
+     * "full" = covers both (dresses, jumpsuits, rompers)
 
 3. FIND HUMAN MODEL IN PRODUCT IMAGES (CRITICAL)
    - Scan ALL product images for a person wearing the garment
@@ -486,6 +490,7 @@ RETURN ONLY VALID JSON (no markdown, no code blocks):
   "user_build": "<slim/average/athletic/broad/plus-size>",
   "target_garment": {
     "type": "<swimsuit/t-shirt/pants/dress/shorts/jacket/etc>",
+    "body_position": "<upper/lower/full>",
     "identified_from_index": <number or null>,
     "description": "<brief description of the isolated garment>"
   },
@@ -778,10 +783,18 @@ function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'nor
   // Agregar nombre del producto si está disponible
   const productInfo = productTitle ? `"${productTitle}"` : 'the product garment';
   
-  // Línea para identificar el target garment específico
-  const targetGarmentLine = target_garment?.type 
-    ? `TARGET GARMENT: ${target_garment.type} - ONLY replace this specific item. If model wears other clothing items, IGNORE them.`
-    : '';
+  // Línea para identificar el target garment específico con posición del cuerpo
+  let targetGarmentLine = '';
+  if (target_garment?.type) {
+    const bodyPos = target_garment.body_position || 'unknown';
+    const bodyPosDesc = {
+      'upper': 'UPPER BODY (torso area) - Do NOT modify pants/shorts/lower body',
+      'lower': 'LOWER BODY (legs/waist area) - Do NOT modify shirts/tops/upper body',
+      'full': 'FULL BODY (torso + legs)'
+    };
+    const positionInfo = bodyPosDesc[bodyPos] || target_garment.type;
+    targetGarmentLine = `TARGET GARMENT: ${target_garment.type} on ${positionInfo}. ONLY replace this specific item. If user wears other clothing items in different body areas, KEEP THEM UNCHANGED.`;
+  }
   
   return `Virtual try-on: Dress the user with ${productInfo}.
 

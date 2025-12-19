@@ -758,9 +758,9 @@ async function validateGeneratedImage(generatedImageBase64, originalAnalysis, pr
   const expectedBodyPos = targetGarment.body_position || 'unknown';
   const expectedLength = targetGarment.garment_length || 'unknown';
   
-  const validationPrompt = `You are validating a virtual try-on result.
+  const validationPrompt = `You are a strict quality control validator for virtual try-on images.
 
-EXPECTED RESULT:
+PRODUCT REFERENCE (image 2):
 - Garment type: ${expectedType}
 - Body position: ${expectedBodyPos} (upper = torso, lower = legs/waist)
 - Garment length: ${expectedLength} (short = above knee, long = below knee)
@@ -768,25 +768,48 @@ EXPECTED RESULT:
 
 TASK: Compare the GENERATED IMAGE (image 1) with the PRODUCT IMAGE (image 2).
 
-CHECK:
-1. Is the person in the generated image wearing a garment that matches the PRODUCT?
-2. Is the garment in the correct body position (${expectedBodyPos})?
-3. Is the garment the correct length (${expectedLength})?
-4. Do the colors and patterns match the product?
-5. Is the face still visible and natural-looking?
+STRICT VALIDATION CHECKLIST:
+
+1. GARMENT IDENTITY - Is it the EXACT SAME garment from the product image?
+   - Same colors (exact shades, not similar)
+   - Same pattern/stripes (same thickness, same position)
+   - Same logo/text (if present in product)
+   - Same neckline/collar style
+   - Same overall design
+
+2. BODY POSITION - Is the garment on the correct body area?
+   - Expected: ${expectedBodyPos}
+   - If ${expectedBodyPos} = "lower", garment MUST be on legs/waist (pants, shorts, skirt)
+   - If ${expectedBodyPos} = "upper", garment MUST be on torso (shirt, top, jacket)
+
+3. GARMENT LENGTH - Does it match the product's length?
+   - Expected: ${expectedLength}
+   - If ${expectedLength} = "short", MUST end ABOVE the knee
+   - If ${expectedLength} = "long", MUST end BELOW the knee or at ankles
+
+4. FACE & POSE - Is the user's face natural and unchanged?
+
+FAIL CONDITIONS (any of these = valid: false):
+- Wrong garment type (e.g., tank top instead of shorts)
+- Wrong body position (e.g., upper body changed when product is pants)
+- Wrong length (e.g., full pants when product is shorts)
+- Different colors or pattern from product
+- Face looks distorted or like a different person
+- Generated image is nearly identical to input (no change made)
 
 RETURN ONLY VALID JSON:
 {
   "valid": true/false,
-  "garment_detected": true/false,
+  "same_garment_as_product": true/false,
   "correct_body_position": true/false,
   "correct_length": true/false,
-  "colors_match": true/false,
+  "colors_and_pattern_match": true/false,
   "face_preserved": true/false,
-  "reason": "<brief explanation of what's wrong if invalid>"
+  "clothing_was_changed": true/false,
+  "reason": "<specific explanation if invalid>"
 }
 
-Be strict but fair. If the garment is clearly visible and matches the product type, position, and length, return valid=true.`;
+BE STRICT. Only return valid=true if the generated image shows the user wearing the EXACT product garment in the correct position and length.`;
 
   try {
     const response = await openai.chat.completions.create({
@@ -826,11 +849,12 @@ Be strict but fair. If the garment is clearly visible and matches the product ty
     console.log('═══════════════════════════════════════════════════════════════');
     console.log(`${result.valid ? '✅' : '❌'} VALIDACIÓN: ${result.valid ? 'PASÓ' : 'FALLÓ'}`);
     console.log('═══════════════════════════════════════════════════════════════');
-    console.log('   📋 Garment detected:', result.garment_detected);
+    console.log('   👕 Same garment as product:', result.same_garment_as_product);
     console.log('   📍 Correct body position:', result.correct_body_position);
     console.log('   📏 Correct length:', result.correct_length);
-    console.log('   🎨 Colors match:', result.colors_match);
+    console.log('   🎨 Colors & pattern match:', result.colors_and_pattern_match);
     console.log('   👤 Face preserved:', result.face_preserved);
+    console.log('   🔄 Clothing was changed:', result.clothing_was_changed);
     if (!result.valid) {
       console.log('   ❌ Reason:', result.reason);
     }

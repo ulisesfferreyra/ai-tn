@@ -453,6 +453,11 @@ TASKS:
      * "upper" = covers torso (t-shirts, shirts, jackets, tank tops, sweaters)
      * "lower" = covers legs (pants, shorts, skirts, swimsuits/trunks)
      * "full" = covers both (dresses, jumpsuits, rompers)
+   - Return: garment_length - HOW LONG is the garment:
+     * "short" = above knee (shorts, mini skirts, swim trunks, crop tops)
+     * "medium" = around knee (bermudas, midi skirts)
+     * "long" = below knee to ankle (pants, long skirts, maxi dresses)
+     * "full" = ankle length or floor length
 
 3. FIND HUMAN MODEL IN PRODUCT IMAGES (CRITICAL)
    - Scan ALL product images for a person wearing the garment
@@ -491,6 +496,7 @@ RETURN ONLY VALID JSON (no markdown, no code blocks):
   "target_garment": {
     "type": "<swimsuit/t-shirt/pants/dress/shorts/jacket/etc>",
     "body_position": "<upper/lower/full>",
+    "garment_length": "<short/medium/long/full>",
     "identified_from_index": <number or null>,
     "description": "<brief description of the isolated garment>"
   },
@@ -783,17 +789,32 @@ function buildNanobananaPrompt(analysis, selectedSize, brand_fit_tendency = 'nor
   // Agregar nombre del producto si está disponible
   const productInfo = productTitle ? `"${productTitle}"` : 'the product garment';
   
-  // Línea para identificar el target garment específico con posición del cuerpo
+  // Línea para identificar el target garment específico con posición del cuerpo y longitud
   let targetGarmentLine = '';
   if (target_garment?.type) {
     const bodyPos = target_garment.body_position || 'unknown';
+    const garmentLen = target_garment.garment_length || 'unknown';
+    
     const bodyPosDesc = {
       'upper': 'UPPER BODY (torso area) - Do NOT modify pants/shorts/lower body',
       'lower': 'LOWER BODY (legs/waist area) - Do NOT modify shirts/tops/upper body',
       'full': 'FULL BODY (torso + legs)'
     };
+    
+    const lengthDesc = {
+      'short': 'SHORT LENGTH (ends ABOVE the knee - like shorts, swim trunks, mini skirts)',
+      'medium': 'MEDIUM LENGTH (ends AROUND the knee - like bermudas, midi skirts)',
+      'long': 'LONG LENGTH (ends BELOW knee to ankle - like pants, long skirts)',
+      'full': 'FULL LENGTH (ankle or floor length)'
+    };
+    
     const positionInfo = bodyPosDesc[bodyPos] || target_garment.type;
-    targetGarmentLine = `TARGET GARMENT: ${target_garment.type} on ${positionInfo}. ONLY replace this specific item. If user wears other clothing items in different body areas, KEEP THEM UNCHANGED.`;
+    const lengthInfo = lengthDesc[garmentLen] || '';
+    
+    targetGarmentLine = `TARGET GARMENT: ${target_garment.type} on ${positionInfo}.
+LENGTH: ${lengthInfo}
+CRITICAL: Match the EXACT length shown in the product image. If product shows shorts (above knee), output MUST show shorts (above knee), NOT pants.
+ONLY replace this specific item. If user wears other clothing items in different body areas, KEEP THEM UNCHANGED.`;
   }
   
   return `Virtual try-on: Dress the user with ${productInfo}.
